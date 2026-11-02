@@ -392,20 +392,22 @@ const MICRO_MOUNTS = [
   {id:'abs',  h:1.41,  name:'1.41" absolute co-witness mount'},
   {id:'l13',  h:1.535, name:'1.535" lower 1/3 co-witness mount'},
   {id:'r193', h:1.93,  name:'1.93" riser'},
-  {id:'r226', h:2.26,  name:'2.26" riser (e.g. Unity FAST)'},
+  {id:'r226', h:2.26,  name:'Unity FAST Micro mount (2.26")'},
 ];
+const UNITY_RISER = 0.85; // Unity FAST Riser: puts an absolute co-witness optic at 2.26"
 const LPVO_MOUNTS = [
   {id:'s154', h:1.54, name:'1.54" scope mount'},
   {id:'s170', h:1.70, name:'1.70" scope mount'},
   {id:'s193', h:1.93, name:'1.93" scope mount'},
   {id:'s205', h:2.05, name:'2.05" scope mount'},
-  {id:'s226', h:2.26, name:'2.26" scope mount'},
+  {id:'s226', h:2.26, name:'2.26" scope mount (e.g. Unity FAST LPVO)'},
 ];
 // Optics with their own base: on the rail, or raised by a spacer riser
 const onBase = (base, label) => [
   {id:'rail', h:base,      name:`${label} (~${base}")`},
   {id:'p05',  h:base + .5, name:`${label} + 0.5" riser (~${+(base + .5).toFixed(3)}")`},
   {id:'p10',  h:base + 1,  name:`${label} + 1.0" riser (~${+(base + 1).toFixed(3)}")`},
+  {id:'unity', h:base + UNITY_RISER, name:`${label} + Unity FAST Riser (~${+(base + UNITY_RISER).toFixed(3)}")`},
 ];
 const OPTICS = [
   {id:'other', group:null, name:'Other / any optic', mounts:[...MICRO_MOUNTS, ...LPVO_MOUNTS.filter(m => m.h !== 1.93 && m.h !== 2.26)].sort((a, b) => a.h - b.h)},
@@ -414,7 +416,8 @@ const OPTICS = [
   {id:'aems',  group:'Holographic / red dot', name:'Holosun AEMS', mounts:[
     {id:'low', h:1.0,   name:'Included low mount (~1.0")'},
     {id:'l13', h:1.535, name:'Lower 1/3 co-witness riser (1.535")'},
-    {id:'r193', h:1.93, name:'1.93" riser'}]},
+    {id:'r193', h:1.93, name:'1.93" riser'},
+    {id:'unity', h:1.0 + UNITY_RISER, name:`Low mount + Unity FAST Riser (~${1.0 + UNITY_RISER}")`}]},
   {id:'t2',    group:'Holographic / red dot', name:'Aimpoint T-2 / Micro',  mounts:MICRO_MOUNTS},
   {id:'hs503', group:'Holographic / red dot', name:'Holosun HS503 / HS403', mounts:MICRO_MOUNTS},
   {id:'romeo5',group:'Holographic / red dot', name:'Sig Romeo5',            mounts:MICRO_MOUNTS},
