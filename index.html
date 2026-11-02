@@ -175,8 +175,13 @@ footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
       </label>
 
       <label class="field" style="margin-bottom:8px">
-        <span class="lbl">Sight mount / riser (AR-15)</span>
-        <span class="inp"><select id="riser" aria-label="Sight mount or riser height"></select></span>
+        <span class="lbl">Optic (AR-15)</span>
+        <span class="inp"><select id="optic" aria-label="Optic"></select></span>
+      </label>
+
+      <label class="field" style="margin-bottom:8px">
+        <span class="lbl">Mount / riser</span>
+        <span class="inp"><select id="riser" aria-label="Mount or riser"></select></span>
       </label>
 
       <label class="field">
@@ -382,20 +387,52 @@ const loadById = id => LOADS.find(l => l.id === id);
 
 // Optic centerline above the rail (in). AR-15 upper rail sits about 1.05" above the bore.
 const AR_RAIL = 1.05;
-const RISERS = [
-  {id:'abs',   h:1.41,  name:'1.41" absolute co-witness'},
-  {id:'l13',   h:1.535, name:'1.535" lower 1/3 co-witness'},
-  {id:'s154',  h:1.54,  name:'1.54" scope mount'},
-  {id:'s170',  h:1.70,  name:'1.70" scope mount'},
-  {id:'s193',  h:1.93,  name:'1.93" scope mount / riser'},
-  {id:'s205',  h:2.05,  name:'2.05" LPVO mount'},
-  {id:'r226',  h:2.26,  name:'2.26" tall riser (e.g. Unity FAST)'},
+// Each optic lists the mounts that fit it; h is the optic's center above the rail.
+const MICRO_MOUNTS = [
+  {id:'abs',  h:1.41,  name:'1.41" absolute co-witness mount'},
+  {id:'l13',  h:1.535, name:'1.535" lower 1/3 co-witness mount'},
+  {id:'r193', h:1.93,  name:'1.93" riser'},
+  {id:'r226', h:2.26,  name:'2.26" riser (e.g. Unity FAST)'},
 ];
-const riserById = id => RISERS.find(r => r.id === id);
+const LPVO_MOUNTS = [
+  {id:'s154', h:1.54, name:'1.54" scope mount'},
+  {id:'s170', h:1.70, name:'1.70" scope mount'},
+  {id:'s193', h:1.93, name:'1.93" scope mount'},
+  {id:'s205', h:2.05, name:'2.05" scope mount'},
+  {id:'s226', h:2.26, name:'2.26" scope mount'},
+];
+// Optics with their own base: on the rail, or raised by a spacer riser
+const onBase = (base, label) => [
+  {id:'rail', h:base,      name:`${label} (~${base}")`},
+  {id:'p05',  h:base + .5, name:`${label} + 0.5" riser (~${+(base + .5).toFixed(3)}")`},
+  {id:'p10',  h:base + 1,  name:`${label} + 1.0" riser (~${+(base + 1).toFixed(3)}")`},
+];
+const OPTICS = [
+  {id:'other', group:null, name:'Other / any optic', mounts:[...MICRO_MOUNTS, ...LPVO_MOUNTS.filter(m => m.h !== 1.93 && m.h !== 2.26)].sort((a, b) => a.h - b.h)},
+  {id:'xps',   group:'Holographic / red dot', name:'EOTech XPS2 / XPS3',   mounts:onBase(1.41, 'On rail, absolute co-witness')},
+  {id:'exps',  group:'Holographic / red dot', name:'EOTech EXPS2 / EXPS3', mounts:onBase(1.54, 'On rail, lower 1/3 co-witness')},
+  {id:'aems',  group:'Holographic / red dot', name:'Holosun AEMS', mounts:[
+    {id:'low', h:1.0,   name:'Included low mount (~1.0")'},
+    {id:'l13', h:1.535, name:'Lower 1/3 co-witness riser (1.535")'},
+    {id:'r193', h:1.93, name:'1.93" riser'}]},
+  {id:'t2',    group:'Holographic / red dot', name:'Aimpoint T-2 / Micro',  mounts:MICRO_MOUNTS},
+  {id:'hs503', group:'Holographic / red dot', name:'Holosun HS503 / HS403', mounts:MICRO_MOUNTS},
+  {id:'romeo5',group:'Holographic / red dot', name:'Sig Romeo5',            mounts:MICRO_MOUNTS},
+  {id:'ta31',  group:'Prism', name:'Trijicon ACOG TA31 (4x32)',  mounts:onBase(1.2, 'TA51 flat-top mount')},
+  {id:'ta11',  group:'Prism', name:'Trijicon ACOG TA11 (3.5x35)', mounts:onBase(1.3, 'TA51 flat-top mount')},
+  {id:'razor', group:'LPVO', name:'Vortex Razor HD Gen III 1-10x24', mounts:LPVO_MOUNTS},
+  {id:'strike',group:'LPVO', name:'Vortex Strike Eagle 1-8x24',      mounts:LPVO_MOUNTS},
+  {id:'nx8',   group:'LPVO', name:'Nightforce NX8 1-8x24',           mounts:LPVO_MOUNTS},
+  {id:'credo', group:'LPVO', name:'Trijicon Credo 1-6x24',           mounts:LPVO_MOUNTS},
+  {id:'vudu',  group:'LPVO', name:'EOTech Vudu 1-6x24',              mounts:LPVO_MOUNTS},
+  {id:'slx',   group:'LPVO', name:'Primary Arms SLx 1-6x24',         mounts:LPVO_MOUNTS},
+];
+const opticById = id => OPTICS.find(o => o.id === id) || OPTICS[0];
+const mountOf = () => opticById(state.optic).mounts.find(m => m.id === state.riser);
 
 // ---------- state & units ----------
 const $ = s => document.querySelector(s);
-const DEF = {model:'G1', bc:0.505, mv:792.48, sh:0.04445, alt:0, zero:100, aim:'chest', units:'imperial', click:'mil10', yMode:'fit', load:'custom', barrel:'16', maxR:1000, riser:'custom'};
+const DEF = {model:'G1', bc:0.505, mv:792.48, sh:0.04445, alt:0, zero:100, aim:'chest', units:'imperial', click:'mil10', yMode:'fit', load:'custom', barrel:'16', maxR:1000, optic:'other', riser:'custom'};
 const state = {...DEF};
 try {
   const s = JSON.parse(localStorage.getItem('ballistic-hold-state') || 'null');
@@ -434,12 +471,19 @@ function syncInputs(){
   syncRiser();
 }
 function syncRiser(){
-  const R = riserById(state.riser);
+  const O = opticById(state.optic), R = mountOf();
+  $('#optic').value = O.id;
+  $('#riser').innerHTML = O.mounts.map(m => `<option value="${m.id}">${m.name}</option>`).join('')
+    + '<option value="custom">Custom height</option>';
   $('#riser').value = R ? R.id : 'custom';
   const inch = v => imp() ? `${+v.toFixed(3)}"` : `${(v * 2.54).toFixed(1)} cm`;
   $('#riserHint').textContent = R
-    ? `${inch(R.h)} mount + ${inch(AR_RAIL)} rail to bore = ${inch(R.h + AR_RAIL)}`
+    ? `${inch(R.h)} optic center above rail + ${inch(AR_RAIL)} rail to bore = ${inch(R.h + AR_RAIL)}`
     : 'Measure from the center of the bore to the center of the optic.';
+}
+function applyRiser(){
+  const R = mountOf();
+  if (R) state.sh = (R.h + AR_RAIL) * .0254;
 }
 function syncLoad(){
   const L = loadById(state.load);
@@ -501,14 +545,22 @@ $('#load').innerHTML = '<option value="custom">Custom</option>' + [...new Set(LO
   `<optgroup label="${grp}">${LOADS.filter(l => l.group === grp).map(l => `<option value="${l.id}">${l.name}</option>`).join('')}</optgroup>`
 ).join('');
 $('#maxRange').addEventListener('input', e => { state.maxR = +e.target.value; compute(); });
-$('#riser').innerHTML = '<option value="custom">Custom</option>' + RISERS.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+$('#optic').innerHTML = [...new Set(OPTICS.map(o => o.group))].map(grp => {
+  const opts = OPTICS.filter(o => o.group === grp).map(o => `<option value="${o.id}">${o.name}</option>`).join('');
+  return grp ? `<optgroup label="${grp}">${opts}</optgroup>` : opts;
+}).join('');
+$('#optic').addEventListener('change', e => {
+  state.optic = e.target.value;
+  const mounts = opticById(state.optic).mounts;
+  if (!mounts.some(m => m.id === state.riser)) state.riser = (mounts.find(m => m.id === 'l13' || m.id === 's193') || mounts[0]).id;
+  applyRiser(); syncInputs(); compute();
+});
 $('#riser').addEventListener('change', e => {
   state.riser = e.target.value;
-  const R = riserById(state.riser);
-  if (R) state.sh = (R.h + AR_RAIL) * .0254;
-  syncInputs(); compute();
+  applyRiser(); syncInputs(); compute();
 });
-if (state.riser !== 'custom' && !riserById(state.riser)) state.riser = 'custom';
+state.optic = opticById(state.optic).id;
+if (!mountOf()) state.riser = 'custom';
 $('#load').addEventListener('change', e => {
   state.load = e.target.value;
   applyLoad();
