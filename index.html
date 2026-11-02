@@ -56,6 +56,10 @@ main{display:flex;flex-direction:column;gap:20px;min-width:0}
 .inp:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 .inp input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);font:inherit;font-size:16px;padding:8px 10px;outline:none;font-variant-numeric:tabular-nums}
 .inp .unit{padding:0 10px;color:var(--muted);font-size:13px;white-space:nowrap}
+.inp select{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);font:inherit;font-size:15px;padding:8px 6px 8px 10px;outline:none;cursor:pointer}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.seg.tight button{padding:6px 2px;font-size:12px}
+.hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4}
 .inp.bad{border-color:var(--miss);box-shadow:0 0 0 3px var(--miss-soft)}
 
 .seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px}
@@ -135,6 +139,20 @@ footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
   <div class="layout">
     <aside class="panel">
       <h2>Rifle &amp; load</h2>
+
+      <label class="field">
+        <span class="lbl">Load preset</span>
+        <span class="inp"><select id="load" aria-label="Load preset"></select></span>
+      </label>
+
+      <div class="field">
+        <span class="lbl">Barrel length (in)</span>
+        <div class="seg tight" data-seg="barrel" role="group" aria-label="Barrel length">
+          <button data-val="10.5">10.5</button><button data-val="11.5">11.5</button><button data-val="14.5">14.5</button>
+          <button data-val="16">16</button><button data-val="18">18</button><button data-val="20">20</button>
+        </div>
+        <div class="hint" id="loadHint"></div>
+      </div>
 
       <div class="field">
         <span class="lbl">Drag model</span>
@@ -326,9 +344,26 @@ function solveZero(p){
   return a;
 }
 
+// ---------- load presets ----------
+// Manufacturer G1 BCs; muzzle velocities (fps) are typical estimates for each barrel length below.
+const BARRELS = ['10.5', '11.5', '14.5', '16', '18', '20'];
+const LOADS = [
+  {id:'m193',   group:'5.56 NATO', name:'M193 55 gr FMJ-BT',        bc:.243, v:[2780, 2840, 3030, 3100, 3180, 3250]},
+  {id:'m855',   group:'5.56 NATO', name:'M855 62 gr FMJ (green tip)', bc:.304, v:[2690, 2760, 2940, 2990, 3050, 3100]},
+  {id:'mk262',  group:'5.56 NATO', name:'Mk 262 77 gr Sierra OTM',  bc:.372, v:[2400, 2460, 2600, 2650, 2700, 2750]},
+  {id:'h75',    group:'5.56 NATO', name:'Hornady 75 gr BTHP',       bc:.395, v:[2420, 2480, 2640, 2690, 2740, 2790]},
+  {id:'h73',    group:'5.56 NATO', name:'Hornady 73 gr ELD Match',  bc:.398, v:[2440, 2500, 2660, 2710, 2760, 2810]},
+  {id:'r55',    group:'.223 Rem',  name:'55 gr FMJ (commercial)',   bc:.243, v:[2650, 2710, 2900, 2970, 3050, 3120]},
+  {id:'vmax55', group:'.223 Rem',  name:'Hornady 55 gr V-MAX',      bc:.255, v:[2680, 2740, 2930, 3000, 3080, 3150]},
+  {id:'smk69',  group:'.223 Rem',  name:'Sierra 69 gr MatchKing',   bc:.301, v:[2480, 2540, 2700, 2760, 2830, 2880]},
+  {id:'smk77',  group:'.223 Rem',  name:'Sierra 77 gr MatchKing',   bc:.372, v:[2330, 2390, 2530, 2580, 2630, 2680]},
+  {id:'tmk77',  group:'.223 Rem',  name:'Sierra 77 gr Tipped MatchKing', bc:.420, v:[2330, 2390, 2530, 2580, 2630, 2680]},
+];
+const loadById = id => LOADS.find(l => l.id === id);
+
 // ---------- state & units ----------
 const $ = s => document.querySelector(s);
-const DEF = {model:'G1', bc:0.505, mv:792.48, sh:0.04445, alt:0, zero:100, aim:'chest', units:'imperial', click:'mil10', yMode:'fit'};
+const DEF = {model:'G1', bc:0.505, mv:792.48, sh:0.04445, alt:0, zero:100, aim:'chest', units:'imperial', click:'mil10', yMode:'fit', load:'custom', barrel:'16'};
 const state = {...DEF};
 try {
   const s = JSON.parse(localStorage.getItem('ballistic-hold-state') || 'null');
@@ -363,6 +398,22 @@ function syncInputs(){
   $('#sh').step = imp() ? 0.05 : 0.1;
   $('#alt').step = imp() ? 500 : 100;
   syncZero();
+  syncLoad();
+}
+function syncLoad(){
+  const L = loadById(state.load);
+  $('#load').value = L ? L.id : 'custom';
+  document.querySelectorAll('[data-seg="barrel"] button').forEach(b => b.disabled = !L);
+  $('#loadHint').textContent = L
+    ? `Est. ${fmtInt(velD(state.mv))} ${velU()} from a ${state.barrel}" barrel · G1 ${L.bc.toFixed(3)}. Chronograph your rifle for best results.`
+    : 'Custom: enter your own BC and velocity, or pick a preset.';
+}
+function applyLoad(){
+  const L = loadById(state.load);
+  if (!L) return;
+  state.model = 'G1';
+  state.bc = L.bc;
+  state.mv = L.v[Math.max(0, BARRELS.indexOf(state.barrel))] * .3048;
 }
 function syncZero(){
   $('#zeroRange').value = Math.min(600, state.zero);
@@ -382,6 +433,7 @@ for (const k in FIELDS){
     if (!ok) return;
     state[k] = v;
     if (k === 'zero') syncZero();
+    if ((k === 'bc' || k === 'mv') && state.load !== 'custom'){ state.load = 'custom'; syncLoad(); }
     compute();
   });
   $('#' + k).addEventListener('blur', syncInputs);
@@ -396,9 +448,23 @@ document.querySelectorAll('#zeroChips button').forEach(b => b.addEventListener('
   state.zero = +b.dataset.z; syncInputs(); compute();
 }));
 document.querySelectorAll('[data-seg]').forEach(g => g.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
-  state[g.dataset.seg] = b.dataset.val;
+  const key = g.dataset.seg;
+  if (key === 'model' && b.dataset.val !== state.model) state.load = 'custom'; // preset BCs are G1
+  state[key] = b.dataset.val;
+  if (key === 'barrel') applyLoad();
   syncSegs(); syncInputs(); compute();
 })));
+
+$('#load').innerHTML = '<option value="custom">Custom</option>' + [...new Set(LOADS.map(l => l.group))].map(grp =>
+  `<optgroup label="${grp}">${LOADS.filter(l => l.group === grp).map(l => `<option value="${l.id}">${l.name}</option>`).join('')}</optgroup>`
+).join('');
+$('#load').addEventListener('change', e => {
+  state.load = e.target.value;
+  applyLoad();
+  syncSegs(); syncInputs(); compute();
+});
+if (state.load !== 'custom' && !loadById(state.load)) state.load = 'custom';
+if (!BARRELS.includes(state.barrel)) state.barrel = '16';
 
 // ---------- compute & render ----------
 let cur = null;
