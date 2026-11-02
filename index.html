@@ -434,6 +434,10 @@ const LPVO_MOUNTS = [
   {id:'s205', h:2.05, name:'2.05" scope mount'},
   {id:'s226', h:2.26, name:'2.26" scope mount (e.g. Unity FAST LPVO)'},
 ];
+// 34mm-only mounts. The 20 MOA cant only shifts the turret's range; once zeroed the holds are the same.
+const MOUNTS_34 = [
+  {id:'arp34', h:1.5, name:'Arken Rigid Precision 34mm, 20 MOA (1.5")'},
+];
 // Optics with their own base: on the rail, or raised by a spacer riser
 const onBase = (base, label) => [
   {id:'rail', h:base,      name:`${label} (~${base}")`},
@@ -442,7 +446,7 @@ const onBase = (base, label) => [
   {id:'unity', h:base + UNITY_RISER, name:`${label} + Unity FAST Riser (~${+(base + UNITY_RISER).toFixed(3)}")`},
 ];
 const OPTICS = [
-  {id:'other', group:null, name:'Other / any optic', mounts:[...MICRO_MOUNTS, ...LPVO_MOUNTS.filter(m => m.h !== 1.93 && m.h !== 2.26)].sort((a, b) => a.h - b.h)},
+  {id:'other', group:null, name:'Other / any optic', mounts:[...MICRO_MOUNTS, ...LPVO_MOUNTS.filter(m => m.h !== 1.93 && m.h !== 2.26), ...MOUNTS_34].sort((a, b) => a.h - b.h)},
   {id:'xps',   group:'Holographic / red dot', name:'EOTech XPS2 / XPS3',   mounts:onBase(1.41, 'On rail, absolute co-witness')},
   {id:'exps',  group:'Holographic / red dot', name:'EOTech EXPS2 / EXPS3', mounts:onBase(1.54, 'On rail, lower 1/3 co-witness')},
   {id:'aems',  group:'Holographic / red dot', name:'Holosun AEMS', mounts:[
@@ -455,12 +459,14 @@ const OPTICS = [
   {id:'romeo5',group:'Holographic / red dot', name:'Sig Romeo5',            mounts:MICRO_MOUNTS},
   {id:'ta31',  group:'Prism', name:'Trijicon ACOG TA31 (4x32)',  mounts:onBase(1.2, 'TA51 flat-top mount')},
   {id:'ta11',  group:'Prism', name:'Trijicon ACOG TA11 (3.5x35)', mounts:onBase(1.3, 'TA51 flat-top mount')},
-  {id:'razor', group:'LPVO', name:'Vortex Razor HD Gen III 1-10x24', mounts:LPVO_MOUNTS},
+  {id:'razor', group:'LPVO', name:'Vortex Razor HD Gen III 1-10x24', mounts:[...MOUNTS_34, ...LPVO_MOUNTS]},
   {id:'strike',group:'LPVO', name:'Vortex Strike Eagle 1-8x24',      mounts:LPVO_MOUNTS},
   {id:'nx8',   group:'LPVO', name:'Nightforce NX8 1-8x24',           mounts:LPVO_MOUNTS},
   {id:'credo', group:'LPVO', name:'Trijicon Credo 1-6x24',           mounts:LPVO_MOUNTS},
   {id:'vudu',  group:'LPVO', name:'EOTech Vudu 1-6x24',              mounts:LPVO_MOUNTS},
   {id:'slx',   group:'LPVO', name:'Primary Arms SLx 1-6x24',         mounts:LPVO_MOUNTS},
+  {id:'sc34',  group:'Scope', name:'Any 34mm scope', mounts:[...MOUNTS_34, ...LPVO_MOUNTS]},
+  {id:'sc30',  group:'Scope', name:'Any 30mm scope', mounts:LPVO_MOUNTS},
 ];
 const opticById = id => OPTICS.find(o => o.id === id) || OPTICS[0];
 const mountOf = () => opticById(state.optic).mounts.find(m => m.id === state.riser);
