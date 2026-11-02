@@ -63,6 +63,18 @@ main{display:flex;flex-direction:column;gap:20px;min-width:0}
 .seg.tight button{padding:6px 2px;font-size:12px}
 .hint{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.4}
 .inp.bad{border-color:var(--miss);box-shadow:0 0 0 3px var(--miss-soft)}
+.bdc-head{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.bdc-head .seg{width:auto}
+.bdc-marks{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 34px;gap:6px 8px;align-items:center;max-width:420px}
+.bdc-marks .h{font-size:12px;color:var(--muted);font-weight:600}
+.bdc-marks .inp input{padding:6px 8px;font-size:15px}
+.btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;font-size:13px;font-weight:600;padding:7px 12px;border-radius:8px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.icon{padding:5px 0;width:34px;color:var(--muted)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.bdc-result{margin-top:14px}
+.bdc-best{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--accent-soft);border-radius:10px;padding:10px 14px;margin-bottom:10px}
+.bdc-best b{font-size:20px;font-variant-numeric:tabular-nums}
 
 .seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px}
 .seg button{flex:1;border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;padding:6px 8px;border-radius:6px;cursor:pointer;white-space:nowrap}
@@ -258,6 +270,25 @@ footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
         <span class="lbl" style="display:flex;justify-content:space-between">Show targets out to <span class="num" id="maxVal" style="color:var(--accent)">1000 m</span></span>
         <input id="maxRange" type="range" min="100" max="1000" step="50" aria-label="Furthest target distance">
         <div class="hint" style="display:flex;justify-content:space-between;margin-top:0"><span>100 m</span><span>1000 m</span></div>
+      </section>
+
+      <section class="panel">
+        <h2>Best zero for BDC</h2>
+        <p class="hint" style="margin:-4px 0 12px">Enter your reticle's holdover marks from its manual: the distance each mark is for and how far it sits below the center. They're saved for the selected optic (<b id="bdcOptic"></b>).</p>
+        <div class="bdc-head">
+          <div class="seg" id="bdcUnit" role="group" aria-label="Mark units">
+            <button data-val="moa">MOA</button><button data-val="mil">MIL</button>
+          </div>
+          <div class="seg" id="bdcDist" role="group" aria-label="Distance units">
+            <button data-val="m">Meters</button><button data-val="yd">Yards</button>
+          </div>
+        </div>
+        <div class="bdc-marks" id="bdcMarks"></div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn" id="bdcAdd">Add mark</button>
+          <button class="btn primary" id="bdcRun">Find best zero</button>
+        </div>
+        <div class="bdc-result" id="bdcResult"></div>
       </section>
 
       <section class="panel">
@@ -471,7 +502,7 @@ const mountOf = () => opticById(state.optic).mounts.find(m => m.id === state.ris
 
 // ---------- state & units ----------
 const $ = s => document.querySelector(s);
-const DEF = {model:'G1', bc:0.505, mv:792.48, sh:0.04445, alt:0, zero:100, aim:'chest', units:'imperial', click:'mil10', yMode:'fit', load:'custom', barrel:'16', maxR:1000, optic:'other', riser:'custom', target:'man'};
+const DEF = {model:'G1', bc:0.505, mv:792.48, sh:0.04445, alt:0, zero:100, aim:'chest', units:'imperial', click:'mil10', yMode:'fit', load:'custom', barrel:'16', maxR:1000, optic:'other', riser:'custom', target:'man', bdc:{}};
 const state = {...DEF};
 try {
   const s = JSON.parse(localStorage.getItem('ballistic-hold-state') || 'null');
@@ -659,6 +690,7 @@ function compute(){
   }
   cur = {traj, rows, atm};
   renderStats(); renderChart(); renderCards(); renderTable();
+  bdcStale();
 }
 
 function renderStats(){
@@ -826,7 +858,95 @@ function renderTable(){
   $('#table').innerHTML = h + '</tbody>';
 }
 
+// ---------- best zero for a BDC reticle ----------
+// Marks are saved per optic: {unit:'moa'|'mil', dist:'m'|'yd', marks:[[distance, hold below center], ...]}
+function bdcCfg(){
+  if (!state.bdc || typeof state.bdc !== 'object' || Array.isArray(state.bdc)) state.bdc = {};
+  let c = state.bdc[state.optic];
+  if (!c || !Array.isArray(c.marks)) c = state.bdc[state.optic] = {unit:'moa', dist:'m', marks:[[300, ''], [400, ''], [500, ''], [600, '']]};
+  return c;
+}
+function renderBdc(){
+  const c = bdcCfg();
+  $('#bdcOptic').textContent = opticById(state.optic).name;
+  document.querySelectorAll('#bdcUnit button').forEach(b => b.setAttribute('aria-pressed', b.dataset.val === c.unit));
+  document.querySelectorAll('#bdcDist button').forEach(b => b.setAttribute('aria-pressed', b.dataset.val === c.dist));
+  $('#bdcMarks').innerHTML = `<span class="h">Mark for (${c.dist})</span><span class="h">Below center (${c.unit.toUpperCase()})</span><span></span>`
+    + c.marks.map(([d, h], i) => `
+      <span class="inp"><input type="number" inputmode="decimal" data-i="${i}" data-k="0" value="${d}" aria-label="Mark ${i + 1} distance"></span>
+      <span class="inp"><input type="number" inputmode="decimal" step="0.1" data-i="${i}" data-k="1" value="${h}" aria-label="Mark ${i + 1} hold"></span>
+      <button class="btn icon" data-del="${i}" aria-label="Remove mark ${i + 1}">✕</button>`).join('');
+}
+function bdcStale(){ $('#bdcResult').innerHTML = ''; }
+
+// Impact height (m, + high) at range x when holding a mark `rad` below center
+function yAt(traj, x){
+  const i = Math.floor(x / STEP), a = traj[i], b = traj[i + 1];
+  if (!a) return null;
+  if (!b) return x === a.x ? a.y : null;
+  return a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x);
+}
+function runBdc(){
+  const c = bdcCfg(), toRad = c.unit === 'mil' ? 1 / 1000 : Math.PI / 180 / 60, toM = c.dist === 'yd' ? .9144 : 1;
+  const marks = c.marks.map(([d, h]) => [parseFloat(d) * toM, parseFloat(h) * toRad, parseFloat(d), parseFloat(h)])
+    .filter(([d, h]) => d > 0 && Number.isFinite(h));
+  if (!marks.length){ $('#bdcResult').innerHTML = '<div class="err show">Enter at least one mark distance and its hold.</div>'; return; }
+  const far = Math.max(...marks.map(m => m[0]));
+  let best = null;
+  for (let z = 25; z <= 400; z += 5){
+    const p = {...state, zero:z}, angle = solveZero(p);
+    if (angle == null) continue;
+    const traj = fly(p, angle, Math.ceil(far / STEP) * STEP, STEP);
+    const miss = marks.map(([d, h]) => { const y = yAt(traj, d); return y == null ? null : y + d * Math.tan(h); });
+    if (miss.includes(null)) continue;
+    const rms = Math.sqrt(miss.reduce((s, m) => s + m * m, 0) / miss.length);
+    if (!best || rms < best.rms) best = {z, rms, miss};
+  }
+  if (!best){ $('#bdcResult').innerHTML = '<div class="err show">Couldn\'t reach those distances with this load.</div>'; return; }
+  const worst = best.miss.reduce((w, m, i) => Math.abs(m) > Math.abs(best.miss[w]) ? i : w, 0);
+  const fm = m => `${Math.abs(dropD(m)).toFixed(1)} ${dropU()} ${Math.abs(dropD(m)) < .05 ? '' : m > 0 ? 'high' : 'low'}`;
+  $('#bdcResult').innerHTML = `
+    <div class="bdc-best">
+      <span>Best zero</span><b>${best.z} m</b>
+      <span class="sub">Average miss ${Math.abs(dropD(best.rms)).toFixed(1)} ${dropU()} · worst ${fm(best.miss[worst])} at ${marks[worst][2]} ${c.dist}</span>
+      <button class="btn primary" id="bdcUse" style="margin-left:auto">Use this zero</button>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Mark</th><th>Below center</th><th>Impact with that mark</th><th>On target?</th></tr></thead>
+      <tbody>${marks.map(([d, h, dRaw, hRaw], i) => `<tr><td>${dRaw} ${c.dist}</td><td>${hRaw} ${c.unit.toUpperCase()}</td><td>${fm(best.miss[i])}</td>
+        <td style="color:${onTarget(0, AIM + best.miss[i]) ? 'var(--hit)' : 'var(--miss)'};font-weight:600">${onTarget(0, AIM + best.miss[i]) ? 'Hit' : 'Miss'}</td></tr>`).join('')}</tbody>
+    </table></div>`;
+  $('#bdcUse').addEventListener('click', () => { state.zero = best.z; syncInputs(); compute(); runBdc(); });
+}
+
+$('#bdcMarks').addEventListener('input', e => {
+  const i = +e.target.dataset.i, k = +e.target.dataset.k;
+  if (!Number.isInteger(i)) return;
+  bdcCfg().marks[i][k] = e.target.value;
+  save(); bdcStale();
+});
+$('#bdcMarks').addEventListener('click', e => {
+  const i = e.target.closest('[data-del]')?.dataset.del;
+  if (i == null) return;
+  bdcCfg().marks.splice(+i, 1);
+  save(); renderBdc(); bdcStale();
+});
+$('#bdcAdd').addEventListener('click', () => {
+  const m = bdcCfg().marks, last = m.length ? parseFloat(m[m.length - 1][0]) || 0 : 0;
+  m.push([last + 100, '']);
+  save(); renderBdc(); bdcStale();
+});
+['bdcUnit', 'bdcDist'].forEach(id => $('#' + id).addEventListener('click', e => {
+  const v = e.target.dataset.val;
+  if (!v) return;
+  bdcCfg()[id === 'bdcUnit' ? 'unit' : 'dist'] = v;
+  save(); renderBdc(); bdcStale();
+}));
+$('#bdcRun').addEventListener('click', runBdc);
+$('#optic').addEventListener('change', () => { renderBdc(); bdcStale(); });
+
 new ResizeObserver(() => renderChart()).observe($('#chart'));
+renderBdc();
 syncSegs(); syncInputs(); compute();
 </script>
 </body>
