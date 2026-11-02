@@ -130,7 +130,7 @@ footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
   <header>
     <div>
       <h1>Ballistic Hold Calculator</h1>
-      <p>Drop and holds on a man-sized target, 50 to <span id="maxTxt">1000</span> m in 50 m steps.</p>
+      <p>Drop and holds on <span id="targetTxt">a man-sized target</span>, 50 to <span id="maxTxt">1000</span> m in 50 m steps.</p>
     </div>
     <div class="seg" data-seg="units" role="group" aria-label="Units" style="width:200px">
       <button data-val="imperial">Imperial</button>
@@ -211,7 +211,11 @@ footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
       </div>
 
       <div class="field">
-        <span class="lbl">Zero / aim point on target</span>
+        <span class="lbl">Target and zero / aim point</span>
+        <div class="seg" data-seg="target" role="group" aria-label="Target silhouette" style="margin-bottom:6px">
+          <button data-val="man">Man</button>
+          <button data-val="bear">Armored bear</button>
+        </div>
         <div class="seg" data-seg="aim" role="group" aria-label="Aim point on target">
           <button data-val="chest">Chest</button>
           <button data-val="groin">Groin</button>
@@ -273,7 +277,7 @@ footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
   <footer>
     Point-mass solver with standard G1/G7 drag tables, RK4 integration and the ICAO standard atmosphere at the chosen altitude.
     Wind, Coriolis, spin drift and temperature are ignored. Holds are measured from the line of sight: ▲ means hold / dial up.
-    MIL = milliradian, MOA = true minute of angle. Target is a 1.8 m standing silhouette, 0.5 m wide, aimed at center chest (1.25 m) or groin (0.90 m).
+    MIL = milliradian, MOA = true minute of angle. Target: <span id="targetDesc"></span>.
     For reference only — confirm with live fire.
   </footer>
 </div>
@@ -286,20 +290,44 @@ const G7 = [[0,.1198],[.05,.1197],[.1,.1196],[.15,.1194],[.2,.1193],[.25,.1194],
 const GRAV = 9.80665, RHO0 = 1.225, BC_SI = 703.0696; // lb/in² -> kg/m²
 const STEP = 5;
 let MAX_R = 1000; // furthest target shown, set from the distance slider
-const AIM_PTS = {chest:1.25, groin:0.90}; // aim point heights on the silhouette (m)
-const TOP = 1.77; // head-top height (m)
-let AIM = AIM_PTS.chest;
+// Silhouettes in meters, origin at feet, y up. Right half is mirrored to build the outline.
+const mirror = right => [...right, ...right.slice(0, -1).reverse().map(([x, y]) => [-x, y])];
+const TARGETS = {
+  man: {
+    name:'1.8 m standing man, 0.5 m wide',
+    body:[[.06,1.54],[.22,1.47],[.25,1.40],[.24,1.10],[.21,.92],[.19,0],[.04,0],[.02,.82],[-.02,.82],[-.04,0],[-.19,0],[-.21,.92],[-.24,1.10],[-.25,1.40],[-.22,1.47],[-.06,1.54]],
+    circles:[{x:0, y:1.66, r:.11}],
+    top:1.77, halfW:.25, aim:{chest:1.25, groin:.90},
+  },
+  bear: {
+    name:'2.1 m standing bear with arms raised, 1.2 m wide, wearing a plate carrier',
+    body:mirror([[.12,1.68],[.22,1.74],[.38,1.92],[.46,2.06],[.54,2.12],[.62,2.06],[.58,1.94],[.48,1.74],[.38,1.56],[.34,1.40],[.37,1.10],[.36,.85],[.32,.62],[.28,.45],[.26,.12],[.31,.04],[.31,0],[.07,0],[.08,.32],[0,.42]]),
+    circles:[{x:0, y:1.82, r:.18}, {x:-.14, y:1.97, r:.06}, {x:.14, y:1.97, r:.06}],
+    muzzle:{x:0, y:1.76, r:.075},
+    vest:mirror([[0,1.46],[.08,1.62],[.20,1.66],[.32,1.54],[.34,1.40],[.37,1.10],[.36,.94],[0,.92]]),
+    plate:{x:-.15, y:1.06, w:.30, h:.34},
+    top:2.12, halfW:.62, aim:{chest:1.22, groin:.60},
+  },
+};
+let T = TARGETS.man, AIM = T.aim.chest;
+const pathD = pts => 'M' + pts.map(([x, y]) => `${x},${-y}`).join('L') + 'Z';
 
-// Silhouette in meters, origin at feet, y up
-const BODY = [[.06,1.54],[.22,1.47],[.25,1.40],[.24,1.10],[.21,.92],[.19,0],[.04,0],[.02,.82],[-.02,.82],[-.04,0],[-.19,0],[-.21,.92],[-.24,1.10],[-.25,1.40],[-.22,1.47],[-.06,1.54]];
-const HEAD = {x:0, y:1.66, r:.11};
-const BODY_D = 'M' + BODY.map(([x,y]) => `${x},${-y}`).join('L') + 'Z';
+// SVG for the current target in flipped (y-down) meters; sw is the stroke width
+function targetSvg(fill, stroke, sw, attrs = ''){
+  let s = `<path d="${pathD(T.body)}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" ${attrs}/>`;
+  for (const c of T.circles) s += `<circle cx="${c.x}" cy="${-c.y}" r="${c.r}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}" ${attrs}/>`;
+  if (T.muzzle) s += `<circle cx="${T.muzzle.x}" cy="${-T.muzzle.y}" r="${T.muzzle.r}" fill="${stroke}" fill-opacity=".25"/>`;
+  if (T.vest) s += `<path d="${pathD(T.vest)}" fill="#3d4247" fill-opacity=".85"/>`;
+  if (T.plate) s += `<rect x="${T.plate.x}" y="${-T.plate.y - T.plate.h}" width="${T.plate.w}" height="${T.plate.h}" fill="none" stroke="#a5abb2" stroke-width="${sw}" ${attrs}/>`
+    + `<line x1="-.3" x2=".3" y1="-1" y2="-1" stroke="#a5abb2" stroke-width="${sw}" ${attrs}/>`;
+  return s;
+}
 
 function onTarget(px, py){
-  if (Math.hypot(px - HEAD.x, py - HEAD.y) <= HEAD.r) return true;
+  if (T.circles.some(c => Math.hypot(px - c.x, py - c.y) <= c.r)) return true;
   let c = false;
-  for (let i = 0, j = BODY.length - 1; i < BODY.length; j = i++){
-    const [xi, yi] = BODY[i], [xj, yj] = BODY[j];
+  for (let i = 0, j = T.body.length - 1; i < T.body.length; j = i++){
+    const [xi, yi] = T.body[i], [xj, yj] = T.body[j];
     if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) c = !c;
   }
   return c;
@@ -435,7 +463,7 @@ const mountOf = () => opticById(state.optic).mounts.find(m => m.id === state.ris
 
 // ---------- state & units ----------
 const $ = s => document.querySelector(s);
-const DEF = {model:'G1', bc:0.505, mv:792.48, sh:0.04445, alt:0, zero:100, aim:'chest', units:'imperial', click:'mil10', yMode:'fit', load:'custom', barrel:'16', maxR:1000, optic:'other', riser:'custom'};
+const DEF = {model:'G1', bc:0.505, mv:792.48, sh:0.04445, alt:0, zero:100, aim:'chest', units:'imperial', click:'mil10', yMode:'fit', load:'custom', barrel:'16', maxR:1000, optic:'other', riser:'custom', target:'man'};
 const state = {...DEF};
 try {
   const s = JSON.parse(localStorage.getItem('ballistic-hold-state') || 'null');
@@ -593,8 +621,12 @@ function clickTxt(c){
 
 function compute(){
   save();
-  if (!AIM_PTS[state.aim]) state.aim = 'chest';
-  AIM = AIM_PTS[state.aim];
+  if (!TARGETS[state.target]) state.target = 'man';
+  if (!['chest', 'groin'].includes(state.aim)) state.aim = 'chest';
+  T = TARGETS[state.target];
+  AIM = T.aim[state.aim];
+  $('#targetTxt').textContent = state.target === 'bear' ? 'an armored bear' : 'a man-sized target';
+  $('#targetDesc').textContent = `${T.name}, aimed at center chest (${T.aim.chest} m) or groin (${T.aim.groin.toFixed(2)} m)`;
   if (!(state.maxR >= 100 && state.maxR <= 1000 && state.maxR % 50 === 0)) state.maxR = 1000;
   MAX_R = state.maxR;
   $('#maxRange').value = MAX_R;
@@ -652,9 +684,9 @@ function renderChart(){
   let yMin, yMax;
   if (state.yMode === 'fit'){
     yMin = Math.min(-AIM, ...traj.map(p => p.y));
-    yMax = Math.max(TOP - AIM, ...traj.map(p => p.y));
+    yMax = Math.max(T.top - AIM, ...traj.map(p => p.y));
     const pad = (yMax - yMin) * 0.05; yMin -= pad; yMax += pad;
-  } else { yMin = -AIM - 0.25; yMax = TOP - AIM + 0.25; }
+  } else { yMin = -AIM - 0.25; yMax = T.top - AIM + 0.25; }
   const X = x => m.l + x / MAX_R * iw;
   const Y = y => m.t + (yMax - y) / (yMax - yMin) * ih;
 
@@ -679,13 +711,12 @@ function renderChart(){
   s += `<g clip-path="url(#plot)">`;
   // targets, scaled to true height; width kept proportional but capped to the spacing
   const sy = ih / (yMax - yMin), spacing = iw / (MAX_R / 50);
-  const sx = Math.min(sy, spacing * 0.7 / 0.5);
+  const sx = Math.min(sy, spacing * (state.target === 'bear' ? 0.9 : 0.7) / (2 * T.halfW));
   for (const r of rows){
     if (r.missing) continue;
     const cls = r.hit ? 'var(--hit)' : 'var(--miss)', fill = r.hit ? 'var(--hit-soft)' : 'var(--miss-soft)';
     s += `<g transform="translate(${X(r.r)},${Y(-AIM)}) scale(${sx},${sy})">`
-       + `<path d="${BODY_D}" fill="${fill}" stroke="${cls}" stroke-width="1" vector-effect="non-scaling-stroke"/>`
-       + `<circle cx="0" cy="${-HEAD.y}" r="${HEAD.r}" fill="${fill}" stroke="${cls}" stroke-width="1" vector-effect="non-scaling-stroke"/></g>`;
+       + targetSvg(fill, cls, 1, 'vector-effect="non-scaling-stroke"') + `</g>`;
   }
   // zero marker
   s += `<line x1="${X(state.zero)}" x2="${X(state.zero)}" y1="${m.t}" y2="${m.t + ih}" stroke="var(--accent)" stroke-dasharray="3 4" opacity=".7"/>`;
@@ -734,7 +765,7 @@ function renderCards(){
     if (r.missing) return `<div class="card"><div class="card-top"><b>${r.r} m</b></div><div class="sub">Out of range</div></div>`;
     const isZero = r.r === state.zero;
     const impY = AIM + r.y;
-    const lo = -0.08, hi = 2.0, off = impY < lo || impY > hi;
+    const lo = -0.08, hi = T.top + 0.2, off = impY < lo || impY > hi;
     const dotY = -Math.max(lo + 0.04, Math.min(hi - 0.04, impY));
     const tag = isZero ? '<span class="tag zero">Zero</span>'
       : r.hit ? '<span class="tag hit">Hit</span>' : '<span class="tag miss">Miss</span>';
@@ -743,11 +774,11 @@ function renderCards(){
       ? `<path d="M-.07,${dotY + (impY < lo ? -.06 : .06)} L0,${dotY + (impY < lo ? .03 : -.03)} L.07,${dotY + (impY < lo ? -.06 : .06)}" fill="none" stroke="var(--accent)" stroke-width=".025" stroke-linecap="round"/>`
         + `<text x=".1" y="${dotY + .03}" font-size=".11" font-weight="700" fill="var(--accent)">${Math.abs(dropD(r.y)).toFixed(0)} ${dropU()} ${impY < lo ? 'low' : 'high'}</text>`
       : `<circle cx="0" cy="${dotY}" r=".04" fill="var(--accent)" stroke="var(--panel)" stroke-width=".015"/>`;
-    const svg = `<svg viewBox="-.6 -2.02 1.2 2.12" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-      <line x1="-.6" x2=".6" y1="0" y2="0" stroke="var(--line)" stroke-width=".01"/>
-      <path d="${BODY_D}" fill="${fill}" stroke="${stroke}" stroke-width=".012"/>
-      <circle cx="0" cy="${-HEAD.y}" r="${HEAD.r}" fill="${fill}" stroke="${stroke}" stroke-width=".012"/>
-      <g stroke="var(--ink)" stroke-width=".008" opacity=".7">
+    const vw = Math.max(.6, T.halfW + .08), vh = T.top + .25;
+    const svg = `<svg viewBox="${-vw} ${-vh + .1} ${2 * vw} ${vh}" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <line x1="${-vw}" x2="${vw}" y1="0" y2="0" stroke="var(--line)" stroke-width=".01"/>
+      ${targetSvg(fill, stroke, .012)}
+      <g stroke="${T.vest && state.aim === 'chest' ? '#f1f3f5' : 'var(--ink)'}" stroke-width=".008" opacity=".8">
         <line x1="-.12" x2="-.04" y1="${-AIM}" y2="${-AIM}"/><line x1=".04" x2=".12" y1="${-AIM}" y2="${-AIM}"/>
         <line x1="0" x2="0" y1="${-AIM - .12}" y2="${-AIM - .04}"/><line x1="0" x2="0" y1="${-AIM + .04}" y2="${-AIM + .12}"/>
       </g>
