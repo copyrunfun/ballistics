@@ -130,7 +130,7 @@ footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
   <header>
     <div>
       <h1>Ballistic Hold Calculator</h1>
-      <p>Drop and holds on a man-sized target, 50 to 1000 m in 50 m steps.</p>
+      <p>Drop and holds on a man-sized target, 50 to <span id="maxTxt">1000</span> m in 50 m steps.</p>
     </div>
     <div class="seg" data-seg="units" role="group" aria-label="Units" style="width:200px">
       <button data-val="imperial">Imperial</button>
@@ -215,6 +215,14 @@ footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
           <button data-val="moa8">⅛ MOA</button>
         </div>
       </div>
+
+      <div class="divider"></div>
+      <h2>Display</h2>
+      <div class="field" style="margin:0">
+        <span class="lbl" style="display:flex;justify-content:space-between">Show targets out to <span class="num" id="maxVal" style="color:var(--accent)">1000 m</span></span>
+        <input id="maxRange" type="range" min="100" max="1000" step="50" aria-label="Furthest target distance">
+        <div class="hint" style="display:flex;justify-content:space-between;margin-top:0"><span>100 m</span><span>1000 m</span></div>
+      </div>
     </aside>
 
     <main>
@@ -265,7 +273,8 @@ const G1 = [[0,.2629],[.05,.2558],[.1,.2487],[.15,.2413],[.2,.2344],[.25,.2278],
 const G7 = [[0,.1198],[.05,.1197],[.1,.1196],[.15,.1194],[.2,.1193],[.25,.1194],[.3,.1194],[.35,.1194],[.4,.1193],[.45,.1193],[.5,.1194],[.55,.1193],[.6,.1194],[.65,.1197],[.7,.1202],[.725,.1207],[.75,.1215],[.775,.1226],[.8,.1242],[.825,.1266],[.85,.1306],[.875,.1368],[.9,.1464],[.925,.1660],[.95,.2054],[.975,.2993],[1,.3803],[1.025,.4015],[1.05,.4043],[1.075,.4034],[1.1,.4014],[1.125,.3987],[1.15,.3955],[1.2,.3884],[1.25,.3810],[1.3,.3732],[1.35,.3657],[1.4,.3580],[1.5,.3440],[1.55,.3376],[1.6,.3315],[1.65,.3260],[1.7,.3209],[1.75,.3160],[1.8,.3117],[1.85,.3078],[1.9,.3042],[1.95,.3010],[2,.2980],[2.05,.2951],[2.1,.2922],[2.15,.2892],[2.2,.2864],[2.25,.2835],[2.3,.2807],[2.35,.2779],[2.4,.2752],[2.45,.2725],[2.5,.2697],[2.55,.2670],[2.6,.2643],[2.65,.2615],[2.7,.2588],[2.75,.2561],[2.8,.2533],[2.85,.2506],[2.9,.2479],[2.95,.2451],[3,.2424],[3.1,.2368],[3.2,.2313],[3.3,.2258],[3.4,.2205],[3.5,.2154],[3.6,.2106],[3.7,.2060],[3.8,.2017],[3.9,.1975],[4,.1935],[4.2,.1861],[4.4,.1793],[4.6,.1730],[4.8,.1672],[5,.1618]];
 
 const GRAV = 9.80665, RHO0 = 1.225, BC_SI = 703.0696; // lb/in² -> kg/m²
-const MAX_R = 1000, STEP = 5;
+const STEP = 5;
+let MAX_R = 1000; // furthest target shown, set from the distance slider
 const AIM_PTS = {chest:1.25, groin:0.90}; // aim point heights on the silhouette (m)
 const TOP = 1.77; // head-top height (m)
 let AIM = AIM_PTS.chest;
@@ -367,7 +376,7 @@ const loadById = id => LOADS.find(l => l.id === id);
 
 // ---------- state & units ----------
 const $ = s => document.querySelector(s);
-const DEF = {model:'G1', bc:0.505, mv:792.48, sh:0.04445, alt:0, zero:100, aim:'chest', units:'imperial', click:'mil10', yMode:'fit', load:'custom', barrel:'16'};
+const DEF = {model:'G1', bc:0.505, mv:792.48, sh:0.04445, alt:0, zero:100, aim:'chest', units:'imperial', click:'mil10', yMode:'fit', load:'custom', barrel:'16', maxR:1000};
 const state = {...DEF};
 try {
   const s = JSON.parse(localStorage.getItem('ballistic-hold-state') || 'null');
@@ -462,6 +471,7 @@ document.querySelectorAll('[data-seg]').forEach(g => g.querySelectorAll('button'
 $('#load').innerHTML = '<option value="custom">Custom</option>' + [...new Set(LOADS.map(l => l.group))].map(grp =>
   `<optgroup label="${grp}">${LOADS.filter(l => l.group === grp).map(l => `<option value="${l.id}">${l.name}</option>`).join('')}</optgroup>`
 ).join('');
+$('#maxRange').addEventListener('input', e => { state.maxR = +e.target.value; compute(); });
 $('#load').addEventListener('change', e => {
   state.load = e.target.value;
   applyLoad();
@@ -493,6 +503,11 @@ function compute(){
   save();
   if (!AIM_PTS[state.aim]) state.aim = 'chest';
   AIM = AIM_PTS[state.aim];
+  if (!(state.maxR >= 100 && state.maxR <= 1000 && state.maxR % 50 === 0)) state.maxR = 1000;
+  MAX_R = state.maxR;
+  $('#maxRange').value = MAX_R;
+  $('#maxVal').textContent = $('#maxTxt').textContent = MAX_R;
+  $('#maxVal').textContent += ' m';
   document.querySelectorAll('[data-aim-txt]').forEach(el => el.textContent = state.aim === 'groin' ? 'groin' : 'center chest');
   const err = $('#err');
   const angle = solveZero(state);
@@ -540,7 +555,7 @@ function renderChart(){
   if (!cur) return;
   const box = $('#chart'), W = box.clientWidth;
   const H = Math.round(Math.max(260, Math.min(420, W * 0.42)));
-  const m = {l:56, r:Math.round((W - 56) / 20 * 0.4) + 8, t:14, b:34}, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const m = {l:56, r:Math.round((W - 56) / (MAX_R / 50) * 0.4) + 8, t:14, b:34}, iw = W - m.l - m.r, ih = H - m.t - m.b;
   const {traj, rows} = cur;
   let yMin, yMax;
   if (state.yMode === 'fit'){
@@ -563,10 +578,10 @@ function renderChart(){
   }
   s += `<text x="12" y="${m.t + ih / 2}" font-size="11" fill="var(--muted)" text-anchor="middle" transform="rotate(-90 12 ${m.t + ih / 2})">${dropU()} from line of sight</text>`;
   // x grid
-  const labelEvery = iw < 480 ? 200 : 100;
-  for (let x = 0; x <= MAX_R; x += 100){
+  const gridStep = MAX_R <= 400 ? 50 : 100, labelEvery = iw < 480 ? gridStep * 2 : gridStep;
+  for (let x = 0; x <= MAX_R; x += gridStep){
     s += `<line x1="${X(x)}" x2="${X(x)}" y1="${m.t}" y2="${m.t + ih}" stroke="var(--grid)"/>`;
-    if (x % labelEvery === 0) s += `<text x="${X(x)}" y="${H - 12}" text-anchor="middle" font-size="11" fill="var(--muted)" class="num">${x}${x === MAX_R ? ' m' : ''}</text>`;
+    if (x % labelEvery === 0) s += `<text x="${X(x)}" y="${H - 12}" text-anchor="middle" font-size="11" fill="var(--muted)" class="num">${x}${x + labelEvery > MAX_R ? ' m' : ''}</text>`;
   }
 
   s += `<g clip-path="url(#plot)">`;
@@ -588,7 +603,7 @@ function renderChart(){
   s += `<path d="M${traj.map(p => `${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join('L')}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>`;
   for (const r of rows) if (!r.missing) s += `<circle cx="${X(r.r)}" cy="${Y(r.y)}" r="2.5" fill="var(--accent)"/>`;
   s += `</g>`;
-  s += `<text x="${Math.min(X(state.zero) + 6, W - m.r - 60)}" y="${m.t + 12}" font-size="11" font-weight="700" fill="var(--accent)">zero ${state.zero} m</text>`;
+  if (state.zero <= MAX_R) s += `<text x="${Math.min(X(state.zero) + 6, W - m.r - 60)}" y="${m.t + 12}" font-size="11" font-weight="700" fill="var(--accent)">zero ${state.zero} m</text>`;
   // hover
   s += `<line id="hx" y1="${m.t}" y2="${m.t + ih}" stroke="var(--ink)" stroke-opacity=".35" visibility="hidden"/>`;
   s += `<circle id="hd" r="5" fill="var(--panel)" stroke="var(--accent)" stroke-width="2.5" visibility="hidden"/>`;
