@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ballistic Hold Calculator</title>
+<meta name="description" content="Point-mass ballistic solver showing drop and holds on a man-sized target from 50 to 1000 meters.">
+<style>
+:root{
+  --bg:#f3f1ec; --panel:#ffffff; --ink:#1c1e21; --muted:#6a6f76; --line:#e1ddd4; --grid:#ebe7df;
+  --accent:#d9480f; --accent-soft:#fde8dd; --accent-ink:#ffffff;
+  --hit:#2b8a3e; --hit-soft:#e2f4e6; --miss:#c92a2a; --miss-soft:#fbe5e5;
+  --target:#3a3f45; --los:#8a9097; --warn:#b7791f; --warn-soft:#fdf1dc;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131517; --panel:#1c1f22; --ink:#e8eaed; --muted:#9aa0a7; --line:#2c3035; --grid:#24282c;
+    --accent:#ff7a3d; --accent-soft:#3b2417; --accent-ink:#1a0d06;
+    --hit:#51cf66; --hit-soft:#173021; --miss:#ff6b6b; --miss-soft:#3a1c1c;
+    --target:#b4bac1; --los:#6f767e; --warn:#f0b549; --warn-soft:#3a2d12;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131517; --panel:#1c1f22; --ink:#e8eaed; --muted:#9aa0a7; --line:#2c3035; --grid:#24282c;
+  --accent:#ff7a3d; --accent-soft:#3b2417; --accent-ink:#1a0d06;
+  --hit:#51cf66; --hit-soft:#173021; --miss:#ff6b6b; --miss-soft:#3a1c1c;
+  --target:#b4bac1; --los:#6f767e; --warn:#f0b549; --warn-soft:#3a2d12;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:1280px;margin:0 auto;padding:24px 16px 48px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+h1{font-size:24px;line-height:1.15;margin:0;letter-spacing:-.01em}
+header p{margin:4px 0 0;color:var(--muted);font-size:14px}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 12px;font-weight:600}
+
+.layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+aside.panel{position:sticky;top:16px}
+@media (max-width:900px){aside.panel{position:static}}
+main{display:flex;flex-direction:column;gap:20px;min-width:0}
+
+.field{display:block;margin-bottom:14px}
+.lbl{display:block;font-size:13px;font-weight:600;margin-bottom:5px}
+.inp{display:flex;align-items:center;border:1px solid var(--line);border-radius:8px;background:var(--bg);overflow:hidden}
+.inp:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.inp input{flex:1;min-width:0;border:0;background:transparent;color:var(--ink);font:inherit;font-size:16px;padding:8px 10px;outline:none;font-variant-numeric:tabular-nums}
+.inp .unit{padding:0 10px;color:var(--muted);font-size:13px;white-space:nowrap}
+.inp.bad{border-color:var(--miss);box-shadow:0 0 0 3px var(--miss-soft)}
+
+.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;padding:6px 8px;border-radius:6px;cursor:pointer;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.divider{height:1px;background:var(--line);margin:18px 0}
+
+.zero-box{background:var(--accent-soft);border-radius:10px;padding:12px;margin-bottom:14px}
+.zero-box .lbl{color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent);margin:10px 0 6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;cursor:pointer}
+.chips button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+@media (max-width:420px){.stats{grid-template-columns:1fr 1fr}.stat .v{font-size:17px}}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat .k{font-size:12px;color:var(--muted);font-weight:600}
+.stat .v{font-size:20px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.stat .s{font-size:12px;color:var(--muted)}
+
+.chart-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.chart-head h2{margin:0}
+.chart-head .seg{width:auto}
+#chart{position:relative;width:100%}
+#chart svg{display:block;width:100%;touch-action:none}
+#tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;line-height:1.35;padding:6px 9px;border-radius:6px;white-space:nowrap;opacity:0;transition:opacity .1s;font-variant-numeric:tabular-nums}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.legend i.box{height:10px;width:10px;border-radius:2px}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px}
+.card{border:1px solid var(--line);border-radius:10px;padding:10px 10px 12px;background:var(--panel);position:relative}
+.card.hit{border-color:color-mix(in srgb,var(--hit) 45%,var(--line))}
+.card.miss{border-color:color-mix(in srgb,var(--miss) 45%,var(--line))}
+.card.zero{box-shadow:0 0 0 2px var(--accent)}
+.card-top{display:flex;justify-content:space-between;align-items:center}
+.card-top b{font-size:16px;font-variant-numeric:tabular-nums}
+.tag{font-size:10px;font-weight:700;letter-spacing:.06em;padding:2px 6px;border-radius:4px;text-transform:uppercase}
+.tag.hit{background:var(--hit-soft);color:var(--hit)}
+.tag.miss{background:var(--miss-soft);color:var(--miss)}
+.tag.zero{background:var(--accent);color:var(--accent-ink)}
+.tag.warn{background:var(--warn-soft);color:var(--warn)}
+.card svg{display:block;width:100%;height:150px;margin:6px 0}
+.hold{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1}
+.hold small{font-size:12px;font-weight:600;color:var(--muted);margin-left:3px}
+.sub{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:12px;color:var(--muted);font-weight:600;position:sticky;top:0;background:var(--panel)}
+th:first-child,td:first-child{text-align:left}
+tr.zero td{background:var(--accent-soft)}
+tr.sub td{color:var(--muted)}
+.up{color:var(--accent)}
+
+.err{display:none;background:var(--miss-soft);color:var(--miss);border-radius:10px;padding:12px 14px;font-weight:600}
+.err.show{display:block}
+footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Ballistic Hold Calculator</h1>
+      <p>Drop and holds on a man-sized target, 50 to 1000 m in 50 m steps.</p>
+    </div>
+    <div class="seg" data-seg="units" role="group" aria-label="Units" style="width:200px">
+      <button data-val="imperial">Imperial</button>
+      <button data-val="metric">Metric</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="panel">
+      <h2>Rifle &amp; load</h2>
+
+      <div class="field">
+        <span class="lbl">Drag model</span>
+        <div class="seg" data-seg="model" role="group" aria-label="Drag model">
+          <button data-val="G1">G1</button>
+          <button data-val="G7">G7</button>
+        </div>
+      </div>
+
+      <label class="field">
+        <span class="lbl">Ballistic coefficient</span>
+        <span class="inp"><input id="bc" type="number" step="0.001" inputmode="decimal"><span class="unit" data-unit="bc"></span></span>
+      </label>
+
+      <label class="field">
+        <span class="lbl">Muzzle velocity</span>
+        <span class="inp"><input id="mv" type="number" step="1" inputmode="decimal"><span class="unit" data-unit="mv"></span></span>
+      </label>
+
+      <label class="field">
+        <span class="lbl">Height over bore</span>
+        <span class="inp"><input id="sh" type="number" step="0.05" inputmode="decimal"><span class="unit" data-unit="sh"></span></span>
+      </label>
+
+      <label class="field">
+        <span class="lbl">Altitude</span>
+        <span class="inp"><input id="alt" type="number" step="100" inputmode="decimal"><span class="unit" data-unit="alt"></span></span>
+      </label>
+
+      <div class="divider"></div>
+      <h2>Sight</h2>
+
+      <div class="zero-box">
+        <label class="field" style="margin:0">
+          <span class="lbl">Zero distance</span>
+          <span class="inp"><input id="zero" type="number" step="5" inputmode="numeric"><span class="unit">m</span></span>
+        </label>
+        <input id="zeroRange" type="range" min="25" max="600" step="5" aria-label="Zero distance slider">
+        <div class="chips" id="zeroChips">
+          <button data-z="25">25</button><button data-z="50">50</button><button data-z="100">100</button>
+          <button data-z="200">200</button><button data-z="300">300</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="lbl">Zero / aim point on target</span>
+        <div class="seg" data-seg="aim" role="group" aria-label="Aim point on target">
+          <button data-val="chest">Chest</button>
+          <button data-val="groin">Groin</button>
+        </div>
+      </div>
+
+      <div class="field" style="margin:0">
+        <span class="lbl">Turret click</span>
+        <div class="seg" data-seg="click" role="group" aria-label="Turret click value">
+          <button data-val="mil10">0.1 MIL</button>
+          <button data-val="moa4">¼ MOA</button>
+          <button data-val="moa8">⅛ MOA</button>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <div class="err" id="err"></div>
+
+      <div class="stats" id="stats"></div>
+
+      <section class="panel">
+        <div class="chart-head">
+          <h2>Trajectory vs. line of sight</h2>
+          <div class="seg" data-seg="yMode" role="group" aria-label="Chart scale">
+            <button data-val="fit">Full drop</button>
+            <button data-val="target">Target height</button>
+          </div>
+        </div>
+        <div id="chart"><div id="tip"></div></div>
+        <div class="legend">
+          <span><i style="background:var(--accent)"></i>Bullet path</span>
+          <span><i style="background:var(--los)"></i>Line of sight (aim at <span data-aim-txt>center chest</span>)</span>
+          <span><i class="box" style="background:var(--hit-soft);border:1px solid var(--hit)"></i>Hit holding center</span>
+          <span><i class="box" style="background:var(--miss-soft);border:1px solid var(--miss)"></i>Miss holding center</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Holds by distance <span style="text-transform:none;letter-spacing:0;font-weight:400">— dot shows impact when holding <span data-aim-txt>center chest</span></span></h2>
+        <div class="cards" id="cards"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Dope table</h2>
+        <div class="table-wrap"><table id="table"></table></div>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    Point-mass solver with standard G1/G7 drag tables, RK4 integration and the ICAO standard atmosphere at the chosen altitude.
+    Wind, Coriolis, spin drift and temperature are ignored. Holds are measured from the line of sight: ▲ means hold / dial up.
+    MIL = milliradian, MOA = true minute of angle. Target is a 1.8 m standing silhouette, 0.5 m wide, aimed at center chest (1.25 m) or groin (0.90 m).
+    For reference only — confirm with live fire.
+  </footer>
+</div>
+
+<script>
+// Standard drag functions: [Mach, Cd]
+const G1 = [[0,.2629],[.05,.2558],[.1,.2487],[.15,.2413],[.2,.2344],[.25,.2278],[.3,.2214],[.35,.2155],[.4,.2104],[.45,.2061],[.5,.2032],[.55,.2020],[.6,.2034],[.7,.2165],[.725,.2230],[.75,.2313],[.775,.2417],[.8,.2546],[.825,.2706],[.85,.2901],[.875,.3136],[.9,.3415],[.925,.3734],[.95,.4084],[.975,.4448],[1,.4805],[1.025,.5136],[1.05,.5427],[1.075,.5677],[1.1,.5883],[1.125,.6053],[1.15,.6191],[1.2,.6393],[1.25,.6518],[1.3,.6589],[1.35,.6621],[1.4,.6625],[1.45,.6607],[1.5,.6573],[1.55,.6528],[1.6,.6474],[1.65,.6413],[1.7,.6347],[1.75,.6280],[1.8,.6210],[1.85,.6141],[1.9,.6072],[1.95,.6003],[2,.5934],[2.05,.5867],[2.1,.5804],[2.15,.5743],[2.2,.5685],[2.25,.5630],[2.3,.5577],[2.35,.5527],[2.4,.5481],[2.45,.5438],[2.5,.5397],[2.6,.5325],[2.7,.5264],[2.8,.5211],[2.9,.5168],[3,.5133],[3.1,.5105],[3.2,.5084],[3.3,.5067],[3.4,.5054],[3.5,.5040],[3.6,.5030],[3.7,.5022],[3.8,.5016],[3.9,.5010],[4,.5006],[4.2,.4998],[4.4,.4995],[4.6,.4992],[4.8,.4990],[5,.4988]];
+const G7 = [[0,.1198],[.05,.1197],[.1,.1196],[.15,.1194],[.2,.1193],[.25,.1194],[.3,.1194],[.35,.1194],[.4,.1193],[.45,.1193],[.5,.1194],[.55,.1193],[.6,.1194],[.65,.1197],[.7,.1202],[.725,.1207],[.75,.1215],[.775,.1226],[.8,.1242],[.825,.1266],[.85,.1306],[.875,.1368],[.9,.1464],[.925,.1660],[.95,.2054],[.975,.2993],[1,.3803],[1.025,.4015],[1.05,.4043],[1.075,.4034],[1.1,.4014],[1.125,.3987],[1.15,.3955],[1.2,.3884],[1.25,.3810],[1.3,.3732],[1.35,.3657],[1.4,.3580],[1.5,.3440],[1.55,.3376],[1.6,.3315],[1.65,.3260],[1.7,.3209],[1.75,.3160],[1.8,.3117],[1.85,.3078],[1.9,.3042],[1.95,.3010],[2,.2980],[2.05,.2951],[2.1,.2922],[2.15,.2892],[2.2,.2864],[2.25,.2835],[2.3,.2807],[2.35,.2779],[2.4,.2752],[2.45,.2725],[2.5,.2697],[2.55,.2670],[2.6,.2643],[2.65,.2615],[2.7,.2588],[2.75,.2561],[2.8,.2533],[2.85,.2506],[2.9,.2479],[2.95,.2451],[3,.2424],[3.1,.2368],[3.2,.2313],[3.3,.2258],[3.4,.2205],[3.5,.2154],[3.6,.2106],[3.7,.2060],[3.8,.2017],[3.9,.1975],[4,.1935],[4.2,.1861],[4.4,.1793],[4.6,.1730],[4.8,.1672],[5,.1618]];
+
+const GRAV = 9.80665, RHO0 = 1.225, BC_SI = 703.0696; // lb/in² -> kg/m²
+const MAX_R = 1000, STEP = 5;
+const AIM_PTS = {chest:1.25, groin:0.90}; // aim point heights on the silhouette (m)
+const TOP = 1.77; // head-top height (m)
+let AIM = AIM_PTS.chest;
+
+// Silhouette in meters, origin at feet, y up
+const BODY = [[.06,1.54],[.22,1.47],[.25,1.40],[.24,1.10],[.21,.92],[.19,0],[.04,0],[.02,.82],[-.02,.82],[-.04,0],[-.19,0],[-.21,.92],[-.24,1.10],[-.25,1.40],[-.22,1.47],[-.06,1.54]];
+const HEAD = {x:0, y:1.66, r:.11};
+const BODY_D = 'M' + BODY.map(([x,y]) => `${x},${-y}`).join('L') + 'Z';
+
+function onTarget(px, py){
+  if (Math.hypot(px - HEAD.x, py - HEAD.y) <= HEAD.r) return true;
+  let c = false;
+  for (let i = 0, j = BODY.length - 1; i < BODY.length; j = i++){
+    const [xi, yi] = BODY[i], [xj, yj] = BODY[j];
+    if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) c = !c;
+  }
+  return c;
+}
+
+// ---------- physics ----------
+function cdAt(table, m){
+  if (m <= table[0][0]) return table[0][1];
+  for (let i = 1; i < table.length; i++){
+    if (m <= table[i][0]){
+      const [a, ca] = table[i-1], [b, cb] = table[i];
+      return ca + (cb - ca) * (m - a) / (b - a);
+    }
+  }
+  return table[table.length-1][1];
+}
+
+function atmosphere(alt){
+  const T = Math.max(216.65, 288.15 - 0.0065 * alt);
+  return { rho: RHO0 * Math.pow(T / 288.15, 4.2559), c: Math.sqrt(1.4 * 287.053 * T) };
+}
+
+// Fly from the muzzle (y = -sight height, line of sight is y = 0). Samples every `step` m up to maxX.
+function fly(p, angle, maxX, step){
+  const atm = atmosphere(p.alt), table = p.model === 'G7' ? G7 : G1;
+  const K = atm.rho * Math.PI / (8 * p.bc * BC_SI);
+  const acc = (vx, vy) => {
+    const v = Math.hypot(vx, vy), a = K * cdAt(table, v / atm.c) * v * v;
+    return [-a * vx / v, -a * vy / v - GRAV];
+  };
+  let x = 0, y = -p.sh, vx = p.mv * Math.cos(angle), vy = p.mv * Math.sin(angle), t = 0;
+  const dt = 0.0005, out = [{x:0, y, v:p.mv, t:0}];
+  let i = 1;
+  while (i * step <= maxX + 1e-9 && t < 20 && vx > 1){
+    const k1 = acc(vx, vy);
+    const k2 = acc(vx + k1[0]*dt/2, vy + k1[1]*dt/2);
+    const k3 = acc(vx + k2[0]*dt/2, vy + k2[1]*dt/2);
+    const k4 = acc(vx + k3[0]*dt, vy + k3[1]*dt);
+    const nvx = vx + dt/6 * (k1[0] + 2*k2[0] + 2*k3[0] + k4[0]);
+    const nvy = vy + dt/6 * (k1[1] + 2*k2[1] + 2*k3[1] + k4[1]);
+    const nx = x + dt/6 * (vx + 2*(vx + k1[0]*dt/2) + 2*(vx + k2[0]*dt/2) + (vx + k3[0]*dt));
+    const ny = y + dt/6 * (vy + 2*(vy + k1[1]*dt/2) + 2*(vy + k2[1]*dt/2) + (vy + k3[1]*dt));
+    const v0 = Math.hypot(vx, vy), v1 = Math.hypot(nvx, nvy);
+    while (i * step <= nx && i * step <= maxX + 1e-9){
+      const X = i * step, f = (X - x) / (nx - x);
+      out.push({x:X, y:y + (ny - y) * f, v:v0 + (v1 - v0) * f, t:t + dt * f});
+      i++;
+    }
+    x = nx; y = ny; vx = nvx; vy = nvy; t += dt;
+  }
+  return out;
+}
+
+// Bore angle that puts the bullet on the line of sight at the zero distance
+function solveZero(p){
+  let a = p.sh / p.zero;
+  for (let n = 0; n < 40; n++){
+    const tr = fly(p, a, p.zero, p.zero), pt = tr[tr.length - 1];
+    if (pt.x < p.zero - 1e-6) return null;
+    if (Math.abs(pt.y) < 1e-5) return a;
+    a -= pt.y / p.zero;
+    if (a > 0.6) return null;
+  }
+  return a;
+}
+
+// ---------- state & units ----------
+const $ = s => document.querySelector(s);
+const DEF = {model:'G1', bc:0.505, mv:792.48, sh:0.04445, alt:0, zero:100, aim:'chest', units:'imperial', click:'mil10', yMode:'fit'};
+const state = {...DEF};
+try {
+  const s = JSON.parse(localStorage.getItem('ballistic-hold-state') || 'null');
+  if (s && typeof s === 'object') for (const k in DEF) if (typeof s[k] === typeof DEF[k]) state[k] = s[k];
+} catch (e) {}
+function save(){ try { localStorage.setItem('ballistic-hold-state', JSON.stringify(state)); } catch (e) {} }
+
+const imp = () => state.units === 'imperial';
+const FIELDS = {
+  bc:   {min:.05, max:2,    to:v => v,                              from:v => v,                              dec:() => 3,            unit:() => state.model},
+  mv:   {min:100, max:2000, to:v => imp() ? v / .3048 : v,          from:v => imp() ? v * .3048 : v,          dec:() => imp() ? 0 : 1, unit:() => imp() ? 'fps' : 'm/s'},
+  sh:   {min:0,   max:.2,   to:v => imp() ? v / .0254 : v * 100,    from:v => imp() ? v * .0254 : v / 100,    dec:() => imp() ? 2 : 1, unit:() => imp() ? 'in' : 'cm'},
+  alt:  {min:-500,max:6000, to:v => imp() ? v / .3048 : v,          from:v => imp() ? v * .3048 : v,          dec:() => 0,            unit:() => imp() ? 'ft' : 'm'},
+  zero: {min:10,  max:1000, to:v => v,                              from:v => v,                              dec:() => 0,            unit:() => 'm'},
+};
+const dropU = () => imp() ? 'in' : 'cm';
+const dropD = m => imp() ? m / .0254 : m * 100;
+const fmtDrop = m => { const s = dropD(m).toFixed(1); return +s === 0 ? '0.0' : (+s > 0 ? '+' : '') + s; };
+const velD = v => imp() ? v / .3048 : v;
+const velU = () => imp() ? 'fps' : 'm/s';
+const fmtInt = n => Math.round(n).toLocaleString('en-US');
+
+function syncInputs(){
+  for (const k in FIELDS){
+    const f = FIELDS[k], el = $('#' + k);
+    el.value = +f.to(state[k]).toFixed(f.dec());
+    el.parentElement.classList.remove('bad');
+    const u = document.querySelector(`[data-unit="${k}"]`);
+    if (u) u.textContent = f.unit();
+  }
+  $('#mv').step = imp() ? 10 : 5;
+  $('#sh').step = imp() ? 0.05 : 0.1;
+  $('#alt').step = imp() ? 500 : 100;
+  syncZero();
+}
+function syncZero(){
+  $('#zeroRange').value = Math.min(600, state.zero);
+  document.querySelectorAll('#zeroChips button').forEach(b => b.setAttribute('aria-pressed', +b.dataset.z === state.zero));
+}
+function syncSegs(){
+  document.querySelectorAll('[data-seg]').forEach(g => {
+    g.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.val === state[g.dataset.seg]));
+  });
+}
+
+for (const k in FIELDS){
+  $('#' + k).addEventListener('input', e => {
+    const f = FIELDS[k], raw = parseFloat(e.target.value), v = f.from(raw);
+    const ok = Number.isFinite(raw) && v >= f.min && v <= f.max;
+    e.target.parentElement.classList.toggle('bad', !ok);
+    if (!ok) return;
+    state[k] = v;
+    if (k === 'zero') syncZero();
+    compute();
+  });
+  $('#' + k).addEventListener('blur', syncInputs);
+}
+$('#zeroRange').addEventListener('input', e => {
+  state.zero = +e.target.value;
+  $('#zero').value = state.zero;
+  $('#zero').parentElement.classList.remove('bad');
+  syncZero(); compute();
+});
+document.querySelectorAll('#zeroChips button').forEach(b => b.addEventListener('click', () => {
+  state.zero = +b.dataset.z; syncInputs(); compute();
+}));
+document.querySelectorAll('[data-seg]').forEach(g => g.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+  state[g.dataset.seg] = b.dataset.val;
+  syncSegs(); syncInputs(); compute();
+})));
+
+// ---------- compute & render ----------
+let cur = null;
+
+function holdOf(y, r){
+  const rad = Math.atan2(-y, r);
+  const mil = rad * 1000, moa = rad * 180 / Math.PI * 60;
+  const click = state.click === 'mil10' ? mil / 0.1 : state.click === 'moa4' ? moa / 0.25 : moa / 0.125;
+  return {mil, moa, click};
+}
+function arrow(v, dec){
+  const a = Math.abs(v).toFixed(dec);
+  if (+a === 0) return a;
+  return (v > 0 ? '▲ ' : '▼ ') + a;
+}
+function clickTxt(c){
+  const n = Math.round(Math.abs(c));
+  return n === 0 ? '0 clicks' : `${n} click${n === 1 ? '' : 's'} ${c > 0 ? 'up' : 'down'}`;
+}
+
+function compute(){
+  save();
+  if (!AIM_PTS[state.aim]) state.aim = 'chest';
+  AIM = AIM_PTS[state.aim];
+  document.querySelectorAll('[data-aim-txt]').forEach(el => el.textContent = state.aim === 'groin' ? 'groin' : 'center chest');
+  const err = $('#err');
+  const angle = solveZero(state);
+  if (angle == null){
+    err.textContent = `Can't zero at ${state.zero} m with these inputs — the bullet doesn't get there. Check velocity and BC.`;
+    err.classList.add('show');
+    return;
+  }
+  err.classList.remove('show');
+  const traj = fly(state, angle, MAX_R, STEP);
+  const atm = atmosphere(state.alt);
+  const rows = [];
+  for (let r = 50; r <= MAX_R; r += 50){
+    const p = traj[r / STEP];
+    if (!p) { rows.push({r, missing:true}); continue; }
+    rows.push({r, y:p.y, v:p.v, t:p.t, mach:p.v / atm.c, hit:onTarget(0, AIM + p.y), ...holdOf(p.y, r)});
+  }
+  cur = {traj, rows, atm};
+  renderStats(); renderChart(); renderCards(); renderTable();
+}
+
+function renderStats(){
+  const {traj, atm} = cur;
+  let pbr = 0;
+  for (const p of traj){ if (p.x === 0) continue; if (onTarget(0, AIM + p.y)) pbr = p.x; else break; }
+  let top = traj[0];
+  for (const p of traj) if (p.y > top.y) top = p;
+  const sub = traj.find(p => p.v < atm.c);
+  const last = traj[traj.length - 1];
+  const stats = [
+    {k:'Point-blank range', v:pbr ? `0–${pbr} m` : '—', s:`Hold ${state.aim === 'groin' ? 'groin' : 'center chest'}, no adjustment`},
+    {k:'Max rise over sight', v:top.y > 0 ? `${dropD(top.y).toFixed(1)} ${dropU()}` : 'none', s:top.y > 0 ? `at ${top.x} m` : 'Bullet stays below line of sight'},
+    {k:`Velocity at ${last.x} m`, v:`${fmtInt(velD(last.v))} ${velU()}`, s:`Mach ${(last.v / atm.c).toFixed(2)} · ${last.t.toFixed(2)} s flight`},
+    {k:'Supersonic to', v:sub ? `${sub.x} m` : `${last.x}+ m`, s:sub ? 'Transonic wobble likely beyond' : 'Stays supersonic all the way'},
+  ];
+  $('#stats').innerHTML = stats.map(s => `<div class="stat"><div class="k">${s.k}</div><div class="v">${s.v}</div><div class="s">${s.s}</div></div>`).join('');
+}
+
+function niceStep(range, count){
+  const raw = range / count, mag = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / mag;
+  return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * mag;
+}
+
+function renderChart(){
+  if (!cur) return;
+  const box = $('#chart'), W = box.clientWidth;
+  const H = Math.round(Math.max(260, Math.min(420, W * 0.42)));
+  const m = {l:56, r:Math.round((W - 56) / 20 * 0.4) + 8, t:14, b:34}, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const {traj, rows} = cur;
+  let yMin, yMax;
+  if (state.yMode === 'fit'){
+    yMin = Math.min(-AIM, ...traj.map(p => p.y));
+    yMax = Math.max(TOP - AIM, ...traj.map(p => p.y));
+    const pad = (yMax - yMin) * 0.05; yMin -= pad; yMax += pad;
+  } else { yMin = -AIM - 0.25; yMax = TOP - AIM + 0.25; }
+  const X = x => m.l + x / MAX_R * iw;
+  const Y = y => m.t + (yMax - y) / (yMax - yMin) * ih;
+
+  let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Bullet trajectory against line of sight with targets every 50 meters">`;
+  s += `<defs><clipPath id="plot"><rect x="${m.l}" y="${m.t}" width="${iw}" height="${ih}"/></clipPath></defs>`;
+
+  // y grid in display units
+  const dMin = dropD(yMin), dMax = dropD(yMax), st = niceStep(dMax - dMin, 6);
+  for (let v = Math.ceil(dMin / st) * st; v <= dMax; v += st){
+    const py = Y(imp() ? v * .0254 : v / 100);
+    s += `<line x1="${m.l}" x2="${W - m.r}" y1="${py}" y2="${py}" stroke="var(--grid)"/>`;
+    s += `<text x="${m.l - 8}" y="${py + 4}" text-anchor="end" font-size="11" fill="var(--muted)" class="num">${+v.toFixed(3)}</text>`;
+  }
+  s += `<text x="12" y="${m.t + ih / 2}" font-size="11" fill="var(--muted)" text-anchor="middle" transform="rotate(-90 12 ${m.t + ih / 2})">${dropU()} from line of sight</text>`;
+  // x grid
+  const labelEvery = iw < 480 ? 200 : 100;
+  for (let x = 0; x <= MAX_R; x += 100){
+    s += `<line x1="${X(x)}" x2="${X(x)}" y1="${m.t}" y2="${m.t + ih}" stroke="var(--grid)"/>`;
+    if (x % labelEvery === 0) s += `<text x="${X(x)}" y="${H - 12}" text-anchor="middle" font-size="11" fill="var(--muted)" class="num">${x}${x === MAX_R ? ' m' : ''}</text>`;
+  }
+
+  s += `<g clip-path="url(#plot)">`;
+  // targets, scaled to true height; width kept proportional but capped to the spacing
+  const sy = ih / (yMax - yMin), spacing = iw / (MAX_R / 50);
+  const sx = Math.min(sy, spacing * 0.7 / 0.5);
+  for (const r of rows){
+    if (r.missing) continue;
+    const cls = r.hit ? 'var(--hit)' : 'var(--miss)', fill = r.hit ? 'var(--hit-soft)' : 'var(--miss-soft)';
+    s += `<g transform="translate(${X(r.r)},${Y(-AIM)}) scale(${sx},${sy})">`
+       + `<path d="${BODY_D}" fill="${fill}" stroke="${cls}" stroke-width="1" vector-effect="non-scaling-stroke"/>`
+       + `<circle cx="0" cy="${-HEAD.y}" r="${HEAD.r}" fill="${fill}" stroke="${cls}" stroke-width="1" vector-effect="non-scaling-stroke"/></g>`;
+  }
+  // zero marker
+  s += `<line x1="${X(state.zero)}" x2="${X(state.zero)}" y1="${m.t}" y2="${m.t + ih}" stroke="var(--accent)" stroke-dasharray="3 4" opacity=".7"/>`;
+  // line of sight
+  s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--los)" stroke-width="1.5"/>`;
+  // trajectory
+  s += `<path d="M${traj.map(p => `${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join('L')}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>`;
+  for (const r of rows) if (!r.missing) s += `<circle cx="${X(r.r)}" cy="${Y(r.y)}" r="2.5" fill="var(--accent)"/>`;
+  s += `</g>`;
+  s += `<text x="${Math.min(X(state.zero) + 6, W - m.r - 60)}" y="${m.t + 12}" font-size="11" font-weight="700" fill="var(--accent)">zero ${state.zero} m</text>`;
+  // hover
+  s += `<line id="hx" y1="${m.t}" y2="${m.t + ih}" stroke="var(--ink)" stroke-opacity=".35" visibility="hidden"/>`;
+  s += `<circle id="hd" r="5" fill="var(--panel)" stroke="var(--accent)" stroke-width="2.5" visibility="hidden"/>`;
+  s += `<rect x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent" id="hz"/>`;
+  s += `</svg>`;
+
+  const tip = $('#tip');
+  box.innerHTML = s;
+  box.appendChild(tip);
+  const svg = box.querySelector('svg'), hx = svg.querySelector('#hx'), hd = svg.querySelector('#hd');
+  const move = e => {
+    const rect = svg.getBoundingClientRect();
+    const r = Math.max(STEP, Math.min(MAX_R, Math.round((e.clientX - rect.left - m.l) / iw * MAX_R / STEP) * STEP));
+    const p = traj[r / STEP];
+    if (!p) return;
+    const px = X(r), py = Math.max(m.t, Math.min(m.t + ih, Y(p.y)));
+    hx.setAttribute('x1', px); hx.setAttribute('x2', px); hx.setAttribute('visibility', 'visible');
+    hd.setAttribute('cx', px); hd.setAttribute('cy', py); hd.setAttribute('visibility', 'visible');
+    const h = holdOf(p.y, r);
+    tip.innerHTML = `<b>${r} m</b> · ${fmtDrop(p.y)} ${dropU()}<br>`
+      + `Hold ${arrow(h.mil, 1)} mil · ${arrow(h.moa, 1)} MOA<br>${fmtInt(velD(p.v))} ${velU()} · ${p.t.toFixed(2)} s`;
+    tip.style.opacity = 1;
+    const tw = tip.offsetWidth;
+    tip.style.left = (px + 12 + tw > W ? px - 12 - tw : px + 12) + 'px';
+    tip.style.top = Math.max(0, Math.min(H - tip.offsetHeight, py - tip.offsetHeight - 10)) + 'px';
+  };
+  const leave = () => { tip.style.opacity = 0; hx.setAttribute('visibility', 'hidden'); hd.setAttribute('visibility', 'hidden'); };
+  svg.addEventListener('pointermove', move);
+  svg.addEventListener('pointerdown', move);
+  svg.addEventListener('pointerleave', leave);
+}
+
+function renderCards(){
+  const mil = state.click === 'mil10';
+  $('#cards').innerHTML = cur.rows.map(r => {
+    if (r.missing) return `<div class="card"><div class="card-top"><b>${r.r} m</b></div><div class="sub">Out of range</div></div>`;
+    const isZero = r.r === state.zero;
+    const impY = AIM + r.y;
+    const lo = -0.08, hi = 2.0, off = impY < lo || impY > hi;
+    const dotY = -Math.max(lo + 0.04, Math.min(hi - 0.04, impY));
+    const tag = isZero ? '<span class="tag zero">Zero</span>'
+      : r.hit ? '<span class="tag hit">Hit</span>' : '<span class="tag miss">Miss</span>';
+    const stroke = r.hit ? 'var(--hit)' : 'var(--miss)', fill = r.hit ? 'var(--hit-soft)' : 'var(--miss-soft)';
+    const offMark = off
+      ? `<path d="M-.07,${dotY + (impY < lo ? -.06 : .06)} L0,${dotY + (impY < lo ? .03 : -.03)} L.07,${dotY + (impY < lo ? -.06 : .06)}" fill="none" stroke="var(--accent)" stroke-width=".025" stroke-linecap="round"/>`
+        + `<text x=".1" y="${dotY + .03}" font-size=".11" font-weight="700" fill="var(--accent)">${Math.abs(dropD(r.y)).toFixed(0)} ${dropU()} ${impY < lo ? 'low' : 'high'}</text>`
+      : `<circle cx="0" cy="${dotY}" r=".04" fill="var(--accent)" stroke="var(--panel)" stroke-width=".015"/>`;
+    const svg = `<svg viewBox="-.6 -2.02 1.2 2.12" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <line x1="-.6" x2=".6" y1="0" y2="0" stroke="var(--line)" stroke-width=".01"/>
+      <path d="${BODY_D}" fill="${fill}" stroke="${stroke}" stroke-width=".012"/>
+      <circle cx="0" cy="${-HEAD.y}" r="${HEAD.r}" fill="${fill}" stroke="${stroke}" stroke-width=".012"/>
+      <g stroke="var(--ink)" stroke-width=".008" opacity=".7">
+        <line x1="-.12" x2="-.04" y1="${-AIM}" y2="${-AIM}"/><line x1=".04" x2=".12" y1="${-AIM}" y2="${-AIM}"/>
+        <line x1="0" x2="0" y1="${-AIM - .12}" y2="${-AIM - .04}"/><line x1="0" x2="0" y1="${-AIM + .04}" y2="${-AIM + .12}"/>
+      </g>
+      ${offMark}
+    </svg>`;
+    const primary = mil ? `${arrow(r.mil, 1)}<small>MIL</small>` : `${arrow(r.moa, 1)}<small>MOA</small>`;
+    const secondary = mil ? `${arrow(r.moa, 1)} MOA` : `${arrow(r.mil, 1)} MIL`;
+    const speed = r.mach < 1 ? ' <span class="tag warn">Subsonic</span>' : '';
+    return `<div class="card ${isZero ? 'zero' : r.hit ? 'hit' : 'miss'}">
+      <div class="card-top"><b>${r.r} m</b>${tag}</div>
+      ${svg}
+      <div class="hold">${primary}</div>
+      <div class="sub">${secondary} · ${clickTxt(r.click)}</div>
+      <div class="sub">Drop ${fmtDrop(r.y)} ${dropU()}${speed}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderTable(){
+  const {rows, traj} = cur;
+  let h = `<thead><tr><th>Range</th><th>Drop (${dropU()})</th><th>Hold MIL</th><th>Hold MOA</th><th>Clicks</th><th>Velocity (${velU()})</th><th>Mach</th><th>Time (s)</th><th>Target</th></tr></thead><tbody>`;
+  for (const r of rows){
+    if (r.missing){ h += `<tr><td>${r.r} m</td><td colspan="8">Out of range</td></tr>`; continue; }
+    const c = Math.round(r.click);
+    h += `<tr class="${r.r === state.zero ? 'zero' : ''} ${r.mach < 1 ? 'sub' : ''}">
+      <td><b>${r.r} m</b></td>
+      <td>${fmtDrop(r.y)}</td>
+      <td class="${r.mil > 0.05 ? 'up' : ''}">${arrow(r.mil, 1)}</td>
+      <td class="${r.moa > 0.05 ? 'up' : ''}">${arrow(r.moa, 1)}</td>
+      <td>${c === 0 ? '0' : (c > 0 ? 'U ' : 'D ') + Math.abs(c)}</td>
+      <td>${fmtInt(velD(r.v))}</td>
+      <td>${r.mach.toFixed(2)}</td>
+      <td>${r.t.toFixed(3)}</td>
+      <td style="color:${r.hit ? 'var(--hit)' : 'var(--miss)'};font-weight:600">${r.hit ? 'Hit' : 'Miss'}</td>
+    </tr>`;
+  }
+  $('#table').innerHTML = h + '</tbody>';
+}
+
+new ResizeObserver(() => renderChart()).observe($('#chart'));
+syncSegs(); syncInputs(); compute();
+</script>
+</body>
+</html>
