@@ -230,14 +230,6 @@ footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
           <button data-val="moa8">⅛ MOA</button>
         </div>
       </div>
-
-      <div class="divider"></div>
-      <h2>Display</h2>
-      <div class="field" style="margin:0">
-        <span class="lbl" style="display:flex;justify-content:space-between">Show targets out to <span class="num" id="maxVal" style="color:var(--accent)">1000 m</span></span>
-        <input id="maxRange" type="range" min="100" max="1000" step="50" aria-label="Furthest target distance">
-        <div class="hint" style="display:flex;justify-content:space-between;margin-top:0"><span>100 m</span><span>1000 m</span></div>
-      </div>
     </aside>
 
     <main>
@@ -260,6 +252,12 @@ footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
           <span><i class="box" style="background:var(--hit-soft);border:1px solid var(--hit)"></i>Hit holding center</span>
           <span><i class="box" style="background:var(--miss-soft);border:1px solid var(--miss)"></i>Miss holding center</span>
         </div>
+      </section>
+
+      <section class="panel" style="padding:14px 18px">
+        <span class="lbl" style="display:flex;justify-content:space-between">Show targets out to <span class="num" id="maxVal" style="color:var(--accent)">1000 m</span></span>
+        <input id="maxRange" type="range" min="100" max="1000" step="50" aria-label="Furthest target distance">
+        <div class="hint" style="display:flex;justify-content:space-between;margin-top:0"><span>100 m</span><span>1000 m</span></div>
       </section>
 
       <section class="panel">
