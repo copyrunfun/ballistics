@@ -75,6 +75,21 @@ main{display:flex;flex-direction:column;gap:20px;min-width:0}
 .bdc-result{margin-top:14px}
 .bdc-best{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--accent-soft);border-radius:10px;padding:10px 14px;margin-bottom:10px}
 .bdc-best b{font-size:20px;font-variant-numeric:tabular-nums}
+[hidden]{display:none !important}
+.ret-top,.ret-tools{display:flex;gap:8px 10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.ret-top .seg,.ret-tools .seg{width:auto}
+.ret-opt{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.ret-opt input,.ret-row input{width:76px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit;font-size:14px;padding:5px 8px;font-variant-numeric:tabular-nums}
+.ret-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(220px,1fr);gap:16px;align-items:start}
+@media (max-width:760px){.ret-grid{grid-template-columns:minmax(0,1fr)}}
+.ret-wrap{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;line-height:0}
+.ret-wrap img{width:100%;height:auto;display:block;user-select:none;-webkit-user-drag:none}
+.ret-wrap svg{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;touch-action:manipulation}
+.ret-out{background:var(--accent-soft);border-radius:10px;padding:10px 12px;margin:10px 0;font-size:14px;line-height:1.45}
+.ret-out b.big{font-size:20px;display:block;font-variant-numeric:tabular-nums}
+.ret-row{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-bottom:1px solid var(--line)}
+.ret-row .grow{flex:1;color:var(--muted);font-variant-numeric:tabular-nums}
+.ret-dot{width:10px;height:10px;border-radius:50%;flex:none}
 
 .seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:3px;gap:3px}
 .seg button{flex:1;border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:600;padding:6px 8px;border-radius:6px;cursor:pointer;white-space:nowrap}
@@ -289,6 +304,49 @@ footer{margin-top:24px;color:var(--muted);font-size:12px;line-height:1.6}
           <button class="btn primary" id="bdcRun">Find best zero</button>
         </div>
         <div class="bdc-result" id="bdcResult"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Reticle hold finder</h2>
+        <p class="hint" style="margin:-4px 0 12px">Upload a picture of your reticle, click its center and its distance marks, then pick a shooting distance to see where on the reticle to hold. The image stays in your browser.</p>
+        <div class="ret-top">
+          <label class="btn primary" for="retFile">Upload reticle image</label>
+          <input id="retFile" type="file" accept="image/*" hidden>
+          <button class="btn" id="retClear" hidden>Remove image</button>
+          <div class="seg" id="retUnit" role="group" aria-label="Reticle distance units">
+            <button data-val="m">Meters</button><button data-val="yd">Yards</button>
+          </div>
+        </div>
+        <div id="retBody" hidden>
+          <div class="ret-tools">
+            <span class="lbl" style="margin:0">Click the image to place</span>
+            <div class="seg" id="retTool" role="group" aria-label="What a click places">
+              <button data-val="center">Center (zero)</button><button data-val="mark">Distance mark</button><button data-val="scale">Scale points</button>
+            </div>
+            <span class="ret-opt" id="retMarkOpts">Next mark
+              <input id="retNext" type="number" min="1" step="1" inputmode="numeric" aria-label="Next mark distance">
+              <span class="chips" id="retChips"></span>
+            </span>
+            <span class="ret-opt" id="retScaleOpts">Click two points that are
+              <input id="retScaleVal" type="number" min="0" step="0.1" inputmode="decimal" aria-label="Angle between scale points">
+              <span class="seg" id="retScaleU" role="group" aria-label="Scale units"><button data-val="mil">MIL</button><button data-val="moa">MOA</button></span>
+              apart (e.g. 1 MIL between mil dots)
+            </span>
+          </div>
+          <div class="ret-grid">
+            <div class="ret-wrap"><img id="retImg" alt="Your reticle"><svg id="retSvg" aria-label="Reticle marks"></svg></div>
+            <div>
+              <label class="field" style="margin-bottom:4px">
+                <span class="lbl">Shooting distance</span>
+                <span class="inp"><input id="retShoot" type="number" min="10" step="5" inputmode="numeric"><span class="unit" id="retShootU">m</span></span>
+              </label>
+              <input id="retShootR" type="range" min="25" max="1000" step="5" aria-label="Shooting distance slider">
+              <div id="retOut"></div>
+              <div id="retList"></div>
+            </div>
+          </div>
+        </div>
+        <p class="hint" id="retWarn" hidden></p>
       </section>
 
       <section class="panel">
@@ -688,9 +746,10 @@ function compute(){
     if (!p) { rows.push({r, missing:true}); continue; }
     rows.push({r, y:p.y, v:p.v, t:p.t, mach:p.v / atm.c, hit:onTarget(0, AIM + p.y), ...holdOf(p.y, r)});
   }
-  cur = {traj, rows, atm};
+  cur = {traj, rows, atm, angle};
   renderStats(); renderChart(); renderCards(); renderTable();
   bdcStale();
+  renderReticle();
 }
 
 function renderStats(){
@@ -944,6 +1003,215 @@ $('#bdcAdd').addEventListener('click', () => {
 }));
 $('#bdcRun').addEventListener('click', runBdc);
 $('#optic').addEventListener('change', () => { renderBdc(); bdcStale(); });
+
+// ---------- reticle hold finder ----------
+// Image coords are pixels of the stored (downscaled) image. Holds are vertical only (no wind).
+const RET_KEY = 'ballistic-reticle', RAD = {mil:1 / 1000, moa:Math.PI / 180 / 60};
+const RET_COL = {center:'#2b8a3e', mark:'#1c7ed6', scale:'#ae3ec9', hold:'#e8590c'};
+let ret = {img:null, w:0, h:0, center:null, marks:[], unit:'m', scale:{a:null, b:null, val:'', unit:'mil'}, shoot:300, next:100};
+try {
+  const s = JSON.parse(localStorage.getItem(RET_KEY) || 'null');
+  if (s && typeof s === 'object') ret = {...ret, ...s, scale:{...ret.scale, ...(s.scale || {})}, marks:Array.isArray(s.marks) ? s.marks : []};
+} catch (e) {}
+let retTool = ret.center ? 'mark' : 'center';
+
+function retSave(){
+  // Warn only when the image is what doesn't fit; no storage at all just means nothing is remembered
+  let ok = true;
+  try { localStorage.setItem(RET_KEY, JSON.stringify(ret)); }
+  catch (e) {
+    try { localStorage.setItem(RET_KEY, JSON.stringify({...ret, img:null})); ok = false; } catch (e2) {}
+  }
+  $('#retWarn').hidden = ok;
+  $('#retWarn').textContent = ok ? '' : "This image is too large for your browser to remember, so you'll need to upload it again after a reload. Your marks are kept.";
+}
+const retToM = d => d * (ret.unit === 'yd' ? .9144 : 1);
+
+// Pixels per radian: exact from the two scale points, else estimated from the marks and the current load
+function retScale(traj){
+  const s = ret.scale, v = parseFloat(s.val);
+  if (s.a && s.b && v > 0) return {k:Math.hypot(s.b[0] - s.a[0], s.b[1] - s.a[1]) / (v * RAD[s.unit]), exact:true};
+  if (!ret.center) return null;
+  let num = 0, den = 0;
+  for (const m of ret.marks){
+    const dm = retToM(m.d), y = yAt(traj, dm);
+    if (y == null) continue;
+    const h = Math.atan2(-y, dm);
+    if (Math.abs(h) < 1e-4) continue;
+    num += (m.y - ret.center[1]) * h; den += h * h;
+  }
+  return den > 0 && num > 0 ? {k:num / den, exact:false} : null;
+}
+
+function renderReticle(){
+  if (!cur) return;
+  const has = !!ret.img;
+  $('#retBody').hidden = !has;
+  $('#retClear').hidden = !has;
+  document.querySelectorAll('#retUnit button').forEach(b => b.setAttribute('aria-pressed', b.dataset.val === ret.unit));
+  document.querySelectorAll('#retTool button').forEach(b => b.setAttribute('aria-pressed', b.dataset.val === retTool));
+  document.querySelectorAll('#retScaleU button').forEach(b => b.setAttribute('aria-pressed', b.dataset.val === ret.scale.unit));
+  $('#retMarkOpts').hidden = retTool !== 'mark';
+  $('#retScaleOpts').hidden = retTool !== 'scale';
+  if (document.activeElement !== $('#retNext')) $('#retNext').value = ret.next;
+  if (document.activeElement !== $('#retScaleVal')) $('#retScaleVal').value = ret.scale.val;
+  $('#retChips').innerHTML = [100, 200, 300, 400, 500, 600, 700, 800].map(d => `<button data-d="${d}" aria-pressed="${+ret.next === d}">${d}</button>`).join('');
+  $('#retShootU').textContent = ret.unit;
+  const maxD = ret.unit === 'yd' ? 1090 : 1000;
+  $('#retShootR').max = maxD;
+  if (document.activeElement !== $('#retShoot')) $('#retShoot').value = ret.shoot;
+  $('#retShootR').value = ret.shoot;
+  if (!has) return;
+
+  const img = $('#retImg');
+  if (img.getAttribute('src') !== ret.img) img.src = ret.img;
+  const W = ret.w, H = ret.h, u = Math.max(W, H) / 100;
+  const traj = fly(state, cur.angle, 1000, STEP);
+  const sc = retScale(traj), c = ret.center;
+  const halo = `stroke="#fff" stroke-width="${u * .5}" paint-order="stroke" stroke-linejoin="round"`;
+  const label = (x, y, txt, col, anchor = 'start') =>
+    `<text x="${x}" y="${y}" font-size="${u * 3.2}" font-weight="700" fill="${col}" ${halo} text-anchor="${anchor}">${txt}</text>`;
+  let s = '';
+  if (ret.scale.a){
+    const [ax, ay] = ret.scale.a;
+    s += `<circle cx="${ax}" cy="${ay}" r="${u * .9}" fill="${RET_COL.scale}"/>`;
+    if (ret.scale.b){
+      const [bx, by] = ret.scale.b;
+      s += `<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${RET_COL.scale}" stroke-width="${u * .35}" stroke-dasharray="${u} ${u * .7}"/>`
+        + `<circle cx="${bx}" cy="${by}" r="${u * .9}" fill="${RET_COL.scale}"/>`;
+    }
+  }
+  for (const m of ret.marks){
+    s += `<circle cx="${m.x}" cy="${m.y}" r="${u * 1.1}" fill="none" stroke="${RET_COL.mark}" stroke-width="${u * .45}"/>`
+      + label(m.x + u * 2, m.y + u * 1.1, `${m.d}`, RET_COL.mark);
+  }
+  if (c){
+    s += `<circle cx="${c[0]}" cy="${c[1]}" r="${u * 1.4}" fill="none" stroke="${RET_COL.center}" stroke-width="${u * .5}"/>`
+      + label(c[0] - u * 2.2, c[1] - u * 2, 'Zero', RET_COL.center, 'end');
+  }
+
+  // hold point for the shooting distance
+  let out = '', holdY = null, h = null;
+  const D = retToM(+ret.shoot), y = D > 0 && D <= 1000 ? yAt(traj, D) : null;
+  if (!c) out = '<b>Step 1:</b> pick <b>Center (zero)</b> and click the point you zeroed with.';
+  else if (y == null) out = 'Pick a shooting distance up to 1000 m.';
+  else {
+    h = Math.atan2(-y, D);
+    const mil = h * 1000, moa = h * 180 / Math.PI * 60, dir = h >= 0 ? 'below' : 'above';
+    if (!sc) out = `Hold ${Math.abs(mil).toFixed(1)} MIL / ${Math.abs(moa).toFixed(1)} MOA ${dir} center.<br><b>Next:</b> add distance marks below the center, or set two scale points, so the hold can be drawn on the reticle.`;
+    else {
+      holdY = c[1] + h * sc.k;
+      const sorted = [...ret.marks].sort((a, b) => a.y - b.y);
+      let where = '';
+      const near = sorted.find(m => Math.abs(m.y - holdY) < u * 1.2);
+      if (near) where = `Right on the <b>${near.d} ${ret.unit}</b> mark.`;
+      else {
+        const below = sorted.find(m => m.y > holdY), above = [...sorted].reverse().find(m => m.y < holdY);
+        if (above && below){
+          const pct = Math.round((holdY - above.y) / (below.y - above.y) * 100);
+          where = `Between the <b>${above.d}</b> and <b>${below.d} ${ret.unit}</b> marks, ${pct}% of the way down.`;
+        } else if (below && Math.abs(holdY - c[1]) < u * 1.2) where = 'On the center.';
+        else if (below) where = `Above the ${below.d} ${ret.unit} mark.`;
+        else if (above) where = `Below the ${above.d} ${ret.unit} mark, the lowest one you marked.`;
+      }
+      out = `<b class="big">${ret.shoot} ${ret.unit}: hold ${Math.abs(mil).toFixed(1)} MIL ${dir}</b>${Math.abs(moa).toFixed(1)} MOA ${dir} center. ${where}`
+        + (sc.exact ? '' : `<div class="hint">Scale estimated from your marks, assuming they suit this load at a ${state.zero} m zero. Set scale points for an exact hold and to check each mark.</div>`);
+      const off = holdY < -u * 2 || holdY > H + u * 2;
+      const hy = Math.max(u * 2, Math.min(H - u * 2, holdY));
+      s += `<line x1="0" x2="${W}" y1="${hy}" y2="${hy}" stroke="${RET_COL.hold}" stroke-width="${u * .3}" stroke-dasharray="${u * 1.5} ${u}" opacity=".8"/>`
+        + `<circle cx="${c[0]}" cy="${hy}" r="${u * 1.8}" fill="${RET_COL.hold}" fill-opacity=".25" stroke="${RET_COL.hold}" stroke-width="${u * .6}"/>`
+        + label(c[0] - u * 3, hy - u * 1.6, off ? `${ret.shoot} ${ret.unit} (off image)` : `${ret.shoot} ${ret.unit}`, RET_COL.hold, 'end');
+    }
+  }
+  out += `<div class="hint">Zeroed at ${state.zero} m. Change it under Sight.</div>`;
+  const svg = $('#retSvg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = s;
+  $('#retOut').innerHTML = `<div class="ret-out">${out}</div>`;
+
+  // mark list, with where each mark really hits when scale is exact
+  const rows = ret.marks.map((m, i) => {
+    let info = '';
+    if (c && sc && sc.exact){
+      const dm = retToM(m.d), yy = dm <= 1000 ? yAt(traj, dm) : null;
+      if (yy != null){
+        const miss = yy + dm * Math.tan((m.y - c[1]) / sc.k), v = Math.abs(dropD(miss));
+        info = v < .05 ? 'dead on' : `hits ${v.toFixed(1)} ${dropU()} ${miss > 0 ? 'high' : 'low'}`;
+      }
+    } else if (c && sc){
+      info = `${(((m.y - c[1]) / sc.k) * 1000).toFixed(1)} MIL below center`;
+    }
+    return `<div class="ret-row"><span class="ret-dot" style="background:${RET_COL.mark}"></span>
+      <input type="number" min="1" step="1" value="${m.d}" data-mi="${i}" aria-label="Mark distance">${ret.unit}
+      <span class="grow">${info}</span><button class="btn icon" data-mdel="${i}" aria-label="Remove mark">✕</button></div>`;
+  }).join('');
+  $('#retList').innerHTML = (rows ? `<div class="lbl" style="margin-top:6px">Your marks</div>${rows}` : '')
+    + (ret.center || ret.marks.length || ret.scale.a ? '<button class="btn" id="retReset" style="margin-top:10px">Clear all marks</button>' : '');
+}
+
+$('#retFile').addEventListener('change', e => {
+  const f = e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const im = new Image();
+    im.onload = () => {
+      const k = Math.min(1, 1000 / Math.max(im.naturalWidth || 1000, im.naturalHeight || 1000));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round((im.naturalWidth || 1000) * k); cv.height = Math.round((im.naturalHeight || 1000) * k);
+      const cx = cv.getContext('2d');
+      cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+      cx.drawImage(im, 0, 0, cv.width, cv.height);
+      let url = cv.toDataURL('image/png');
+      if (url.length > 1.5e6) url = cv.toDataURL('image/jpeg', .88);
+      ret = {...ret, img:url, w:cv.width, h:cv.height, center:null, marks:[], scale:{...ret.scale, a:null, b:null}, next:100};
+      retTool = 'center';
+      retSave(); renderReticle();
+    };
+    im.onerror = () => { $('#retWarn').hidden = false; $('#retWarn').textContent = "That file couldn't be read as an image."; };
+    im.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+});
+$('#retSvg').addEventListener('click', e => {
+  const r = e.currentTarget.getBoundingClientRect();
+  const x = (e.clientX - r.left) * ret.w / r.width, y = (e.clientY - r.top) * ret.h / r.height;
+  if (retTool === 'center'){ ret.center = [x, y]; retTool = 'mark'; }
+  else if (retTool === 'mark'){
+    const d = parseFloat(ret.next);
+    if (!(d > 0)) return;
+    ret.marks = ret.marks.filter(m => m.d !== d);
+    ret.marks.push({d, x, y});
+    ret.marks.sort((a, b) => a.d - b.d);
+    ret.next = d + 100;
+  } else {
+    const s = ret.scale;
+    if (!s.a || s.b){ s.a = [x, y]; s.b = null; } else s.b = [x, y];
+  }
+  retSave(); renderReticle();
+});
+$('#retTool').addEventListener('click', e => { if (e.target.dataset.val){ retTool = e.target.dataset.val; renderReticle(); } });
+$('#retUnit').addEventListener('click', e => { if (e.target.dataset.val){ ret.unit = e.target.dataset.val; retSave(); renderReticle(); } });
+$('#retScaleU').addEventListener('click', e => { if (e.target.dataset.val){ ret.scale.unit = e.target.dataset.val; retSave(); renderReticle(); } });
+$('#retChips').addEventListener('click', e => { if (e.target.dataset.d){ ret.next = +e.target.dataset.d; retSave(); renderReticle(); } });
+$('#retNext').addEventListener('input', e => { ret.next = e.target.value; retSave(); });
+$('#retScaleVal').addEventListener('input', e => { ret.scale.val = e.target.value; retSave(); renderReticle(); });
+$('#retShoot').addEventListener('input', e => { const v = parseFloat(e.target.value); if (v > 0){ ret.shoot = v; retSave(); renderReticle(); } });
+$('#retShootR').addEventListener('input', e => { ret.shoot = +e.target.value; retSave(); renderReticle(); });
+$('#retClear').addEventListener('click', () => { ret = {...ret, img:null, center:null, marks:[], scale:{...ret.scale, a:null, b:null}}; retSave(); renderReticle(); });
+$('#retList').addEventListener('click', e => {
+  if (e.target.id === 'retReset'){ ret = {...ret, center:null, marks:[], scale:{...ret.scale, a:null, b:null}, next:100}; retTool = 'center'; }
+  else if (e.target.dataset.mdel != null) ret.marks.splice(+e.target.dataset.mdel, 1);
+  else return;
+  retSave(); renderReticle();
+});
+$('#retList').addEventListener('change', e => {
+  const i = e.target.dataset.mi, v = parseFloat(e.target.value);
+  if (i == null || !(v > 0)) return;
+  ret.marks[+i].d = v;
+  retSave(); renderReticle();
+});
 
 new ResizeObserver(() => renderChart()).observe($('#chart'));
 renderBdc();
